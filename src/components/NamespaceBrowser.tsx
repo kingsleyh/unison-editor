@@ -7,52 +7,72 @@ interface NamespaceBrowserProps {
   onOpenDefinition: (name: string, type: 'term' | 'type') => void;
 }
 
+interface TreeNode {
+  name: string;
+  fullPath: string;
+  type: 'term' | 'type' | 'namespace';
+  hash?: string;
+  children?: TreeNode[];
+  isExpanded?: boolean;
+  isLoaded?: boolean;
+}
+
 export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
-  const { currentProject, currentBranch, currentPath } = useUnisonStore();
-  const [items, setItems] = useState<NamespaceItem[]>([]);
+  const { currentProject, currentBranch } = useUnisonStore();
+  const [rootNodes, setRootNodes] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<NamespaceItem[]>([]);
 
   const client = getUCMApiClient();
 
-  // Load namespace when project, branch, or path changes
+  // Load root namespace when project/branch changes
   useEffect(() => {
     if (currentProject && currentBranch) {
-      loadNamespace();
+      loadRootNamespace();
     }
-  }, [currentProject, currentBranch, currentPath]);
+  }, [currentProject, currentBranch]);
 
   // Debounced search when query changes
   useEffect(() => {
     if (!currentProject || !currentBranch) return;
 
-    // If search query is empty, load namespace instead
     if (!searchQuery.trim()) {
-      loadNamespace();
+      setSearchResults([]);
       return;
     }
 
-    // Debounce the search
     const timeoutId = setTimeout(() => {
       performSearch();
-    }, 300); // 300ms debounce
+    }, 300);
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery, currentProject, currentBranch]);
 
-  async function loadNamespace() {
+  async function loadRootNamespace() {
     if (!currentProject || !currentBranch) return;
 
     setLoading(true);
     setError(null);
     try {
-      const namespaceItems = await client.listNamespace(
+      const items = await client.listNamespace(
         currentProject.name,
         currentBranch.name,
-        currentPath
+        '.'
       );
-      setItems(namespaceItems);
+
+      const nodes: TreeNode[] = items.map((item) => ({
+        name: item.name,
+        fullPath: item.name,
+        type: item.type,
+        hash: item.hash,
+        isExpanded: false,
+        isLoaded: item.type !== 'namespace',
+        children: item.type === 'namespace' ? [] : undefined,
+      }));
+
+      setRootNodes(nodes);
     } catch (err) {
       setError(`Failed to load namespace: ${err}`);
       console.error('Error loading namespace:', err);
@@ -61,9 +81,68 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
     }
   }
 
+  async function loadChildren(node: TreeNode): Promise<TreeNode[]> {
+    if (!currentProject || !currentBranch) return [];
+
+    const items = await client.listNamespace(
+      currentProject.name,
+      currentBranch.name,
+      node.fullPath
+    );
+
+    return items.map((item) => ({
+      name: item.name,
+      fullPath: `${node.fullPath}.${item.name}`,
+      type: item.type,
+      hash: item.hash,
+      isExpanded: false,
+      isLoaded: item.type !== 'namespace',
+      children: item.type === 'namespace' ? [] : undefined,
+    }));
+  }
+
+  async function toggleNode(nodePath: string[]) {
+    const newRootNodes = [...rootNodes];
+
+    // Navigate to the node using the path
+    let nodes = newRootNodes;
+    let targetNode: TreeNode | undefined;
+
+    for (let i = 0; i < nodePath.length; i++) {
+      const index = parseInt(nodePath[i]);
+      targetNode = nodes[index];
+
+      if (i < nodePath.length - 1 && targetNode.children) {
+        nodes = targetNode.children;
+      }
+    }
+
+    if (!targetNode || targetNode.type !== 'namespace') return;
+
+    // Toggle expansion
+    if (targetNode.isExpanded) {
+      targetNode.isExpanded = false;
+    } else {
+      targetNode.isExpanded = true;
+      // Load children if not already loaded
+      if (!targetNode.isLoaded) {
+        try {
+          targetNode.children = await loadChildren(targetNode);
+          targetNode.isLoaded = true;
+        } catch (err) {
+          setError(`Failed to load namespace: ${err}`);
+          console.error('Error loading namespace:', err);
+          return;
+        }
+      }
+    }
+
+    setRootNodes(newRootNodes);
+  }
+
   async function performSearch() {
     if (!currentProject || !currentBranch || !searchQuery.trim()) {
-      loadNamespace();
+      setSearchResults([]);
       return;
     }
 
@@ -77,14 +156,13 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
         50
       );
 
-      // Convert search results to namespace items
       const namespaceItems: NamespaceItem[] = results.map((r) => ({
         name: r.name,
         type: r.type,
         hash: r.hash,
       }));
 
-      setItems(namespaceItems);
+      setSearchResults(namespaceItems);
     } catch (err) {
       setError(`Failed to search: ${err}`);
       console.error('Error searching:', err);
@@ -93,26 +171,17 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
     }
   }
 
-  function handleItemClick(item: NamespaceItem) {
-    if (item.type === 'namespace') {
-      // Navigate into namespace by updating the current path
-      const newPath = currentPath === '.' || currentPath === ''
-        ? item.name
-        : `${currentPath}.${item.name}`;
-      useUnisonStore.getState().setCurrentPath(newPath);
-    } else if (item.type === 'term' || item.type === 'type') {
-      // Use fully qualified name (current path + item name)
-      const fullName = currentPath === '.' || currentPath === ''
-        ? item.name
-        : `${currentPath}.${item.name}`;
+  function handleItemClick(item: NamespaceItem | TreeNode) {
+    if (item.type === 'term' || item.type === 'type') {
+      const fullName = 'fullPath' in item ? item.fullPath : item.name;
       onOpenDefinition(fullName, item.type as 'term' | 'type');
     }
   }
 
-  function getItemIcon(type: string) {
+  function getItemIcon(type: string, isExpanded?: boolean) {
     switch (type) {
       case 'namespace':
-        return '📁';
+        return isExpanded ? '📂' : '📁';
       case 'term':
         return '𝑓';
       case 'type':
@@ -120,6 +189,46 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
       default:
         return '•';
     }
+  }
+
+  function renderTreeNode(node: TreeNode, path: number[], depth: number = 0): JSX.Element {
+    const nodePath = [...path];
+    const hasChildren = node.type === 'namespace';
+
+    return (
+      <div key={node.fullPath}>
+        <div
+          className="namespace-item"
+          style={{ paddingLeft: `${depth * 16 + 8}px` }}
+          onClick={() => {
+            if (hasChildren) {
+              toggleNode(nodePath);
+            } else {
+              handleItemClick(node);
+            }
+          }}
+        >
+          {hasChildren && (
+            <span className="tree-arrow">
+              {node.isExpanded ? '▼' : '▶'}
+            </span>
+          )}
+          {!hasChildren && <span className="tree-spacer" />}
+          <span className="item-icon">{getItemIcon(node.type, node.isExpanded)}</span>
+          <span className="item-name">{node.name}</span>
+          {node.hash && (
+            <span className="item-hash">{node.hash.substring(0, 8)}</span>
+          )}
+        </div>
+        {hasChildren && node.isExpanded && node.children && (
+          <div className="tree-children">
+            {node.children.map((child, index) =>
+              renderTreeNode(child, [...nodePath, index], depth + 1)
+            )}
+          </div>
+        )}
+      </div>
+    );
   }
 
   if (!currentProject || !currentBranch) {
@@ -130,46 +239,8 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
     );
   }
 
-  function navigateToPath(newPath: string) {
-    useUnisonStore.getState().setCurrentPath(newPath);
-    setSearchQuery(''); // Clear search when navigating
-  }
-
-  function renderBreadcrumbs() {
-    const parts = currentPath === '.' || currentPath === '' ? [] : currentPath.split('.');
-
-    return (
-      <div className="breadcrumbs">
-        <span
-          className="breadcrumb-item"
-          onClick={() => navigateToPath('.')}
-          style={{ cursor: 'pointer' }}
-        >
-          🏠
-        </span>
-        {parts.map((part, index) => {
-          const pathUpToHere = parts.slice(0, index + 1).join('.');
-          return (
-            <span key={index}>
-              <span className="breadcrumb-separator"> / </span>
-              <span
-                className="breadcrumb-item"
-                onClick={() => navigateToPath(pathUpToHere)}
-                style={{ cursor: 'pointer' }}
-              >
-                {part}
-              </span>
-            </span>
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
     <div className="namespace-browser">
-      {renderBreadcrumbs()}
-
       <div className="search-box">
         <input
           type="text"
@@ -181,26 +252,36 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
 
       {error && <div className="error-message">{error}</div>}
 
-      {loading ? (
+      {loading && searchResults.length === 0 && rootNodes.length === 0 ? (
         <div className="loading">Loading...</div>
       ) : (
         <div className="namespace-items">
-          {items.length === 0 ? (
-            <div className="empty-message">No items found</div>
+          {searchQuery.trim() ? (
+            // Show search results
+            searchResults.length === 0 ? (
+              <div className="empty-message">No results found</div>
+            ) : (
+              searchResults.map((item, index) => (
+                <div
+                  key={`${item.name}-${index}`}
+                  className={`namespace-item ${item.type}`}
+                  onClick={() => handleItemClick(item)}
+                >
+                  <span className="item-icon">{getItemIcon(item.type)}</span>
+                  <span className="item-name">{item.name}</span>
+                  {item.hash && (
+                    <span className="item-hash">{item.hash.substring(0, 8)}</span>
+                  )}
+                </div>
+              ))
+            )
           ) : (
-            items.map((item, index) => (
-              <div
-                key={`${item.name}-${index}`}
-                className={`namespace-item ${item.type}`}
-                onClick={() => handleItemClick(item)}
-              >
-                <span className="item-icon">{getItemIcon(item.type)}</span>
-                <span className="item-name">{item.name}</span>
-                {item.hash && (
-                  <span className="item-hash">{item.hash.substring(0, 8)}</span>
-                )}
-              </div>
-            ))
+            // Show tree view
+            rootNodes.length === 0 ? (
+              <div className="empty-message">No items found</div>
+            ) : (
+              rootNodes.map((node, index) => renderTreeNode(node, [index]))
+            )
           )}
         </div>
       )}

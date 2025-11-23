@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Editor } from './components/Editor';
 import { ProjectBranchSelector } from './components/ProjectBranchSelector';
 import { NamespaceBrowser } from './components/NamespaceBrowser';
+import { ResizableSplitter } from './components/ResizableSplitter';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
@@ -124,70 +125,72 @@ function App() {
       </header>
 
       <div className="app-body">
-        <aside className="sidebar">
-          <NamespaceBrowser onOpenDefinition={handleOpenDefinition} />
-        </aside>
-
-        <main className="main-content">
-          {connectionChecking ? (
-            <div className="connection-status">Checking connection...</div>
-          ) : !isConnected ? (
-            <div className="connection-error">
-              <h2>Not Connected to UCM</h2>
-              <p>
-                Please ensure UCM is running and accessible at the configured
-                address.
-              </p>
-              <button onClick={checkConnection}>Retry Connection</button>
-            </div>
-          ) : (
-            <>
-              <div className="tabs-bar">
-                <div className="tabs">
-                  {tabs.map((tab) => (
-                    <div
-                      key={tab.id}
-                      className={`tab ${tab.id === activeTabId ? 'active' : ''}`}
-                      onClick={() => setActiveTab(tab.id)}
-                    >
-                      <span className="tab-title">
-                        {tab.title}
-                        {tab.isDirty && ' •'}
-                      </span>
-                      <button
-                        className="tab-close"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeTab(tab.id);
-                        }}
+        {connectionChecking ? (
+          <div className="connection-status">Checking connection...</div>
+        ) : !isConnected ? (
+          <div className="connection-error">
+            <h2>Not Connected to UCM</h2>
+            <p>
+              Please ensure UCM is running and accessible at the configured
+              address.
+            </p>
+            <button onClick={checkConnection}>Retry Connection</button>
+          </div>
+        ) : (
+          <ResizableSplitter
+            minLeftWidth={200}
+            maxLeftWidth={600}
+            defaultLeftWidth={250}
+            left={<NamespaceBrowser onOpenDefinition={handleOpenDefinition} />}
+            right={
+              <main className="main-content">
+                <div className="tabs-bar">
+                  <div className="tabs">
+                    {tabs.map((tab) => (
+                      <div
+                        key={tab.id}
+                        className={`tab ${tab.id === activeTabId ? 'active' : ''}`}
+                        onClick={() => setActiveTab(tab.id)}
                       >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <button className="new-file-btn" onClick={handleNewFile}>
-                  + New
-                </button>
-              </div>
-
-              <div className="editor-container">
-                {activeTab ? (
-                  <Editor
-                    value={activeTab.content}
-                    onChange={handleEditorChange}
-                    language={activeTab.language}
-                  />
-                ) : (
-                  <div className="no-editor">
-                    <p>No file open</p>
-                    <button onClick={handleNewFile}>Create New File</button>
+                        <span className="tab-title">
+                          {tab.title}
+                          {tab.isDirty && ' •'}
+                        </span>
+                        <button
+                          className="tab-close"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeTab(tab.id);
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
-            </>
-          )}
-        </main>
+                  <button className="new-file-btn" onClick={handleNewFile}>
+                    + New
+                  </button>
+                </div>
+
+                <div className="editor-container">
+                  {activeTab ? (
+                    <Editor
+                      value={activeTab.content}
+                      onChange={handleEditorChange}
+                      language={activeTab.language}
+                    />
+                  ) : (
+                    <div className="no-editor">
+                      <p>No file open</p>
+                      <button onClick={handleNewFile}>Create New File</button>
+                    </div>
+                  )}
+                </div>
+              </main>
+            }
+          />
+        )}
       </div>
     </div>
   );
