@@ -39,6 +39,7 @@ export function Editor({
         readOnly,
         minimap: { enabled: true },
         fontSize: 14,
+        fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace",
         lineNumbers: 'on',
         renderWhitespace: 'selection',
         scrollBeyondLastLine: false,

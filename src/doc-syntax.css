@@ -1,0 +1,486 @@
+/* Unison Doc and Syntax Styling - from ui-core */
+
+/* CSS Variables for colors */
+:root {
+  --font-monospace: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  --font-sans-serif: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  --border-radius-base: 4px;
+  --font-size-small: 0.875rem;
+  --font-size-medium: 1rem;
+
+  /* Unison dark theme colors */
+  --color-gray-0: #1a1a1a;
+  --color-gray-1: #222222;
+  --color-gray-2: #2a2a2a;
+  --color-gray-3: #3a3a3a;
+  --color-gray-4: #4a4a4a;
+  --color-gray-5: #6a6a6a;
+  --color-gray-6: #8a8a8a;
+  --color-gray-8: #aaaaaa;
+  --color-gray-9: #cacaca;
+  --color-gray-10: #d4d4d4;
+  --color-gray-11: #e0e0e0;
+
+  --color-blue-1: #1e3a5f;
+  --color-blue-2: #264f73;
+  --color-blue-3: #4a9eff;
+  --color-blue-4: #2e5c8a;
+  --color-blue-5: #5eb0ff;
+
+  --color-purple-1: #3a2a5f;
+  --color-purple-2: #4a3a7a;
+  --color-purple-3: #6a5a9a;
+  --color-purple-4: #8a7aba;
+  --color-purple-5: #aa9ada;
+
+  --color-pink-1: #ff6b9d;
+  --color-pink-2: #ff5588;
+  --color-pink-3: #ff4477;
+  --color-pink-4: #ff3366;
+
+  --color-green-3: #7cc89a;
+
+  --color-transparent: transparent;
+
+  /* UI color tokens */
+  --u-color_text: var(--color-gray-11);
+  --u-color_text_very-subdued: var(--color-gray-4);
+  --u-color_text_subdued: var(--color-gray-5);
+  --u-color_container: var(--color-gray-1);
+  --u-color_container_subdued: var(--color-gray-0);
+  --u-color_container_subdued_selected: var(--color-gray-1);
+  --u-color_container_selected: var(--color-gray-2);
+  --u-color_element_subdued: var(--color-gray-1);
+  --u-color_element_emphasized: var(--color-gray-2);
+  --u-color_element_emphasized_selected: var(--color-blue-1);
+  --u-color_border_subdued: var(--color-gray-2);
+  --u-color_divider: var(--color-gray-3);
+  --u-color_info_container_subdued: var(--color-blue-1);
+  --u-color_scrollbar: var(--color-gray-3);
+  --u-color_scrollbar-track: var(--color-transparent);
+  --u-color_action: var(--color-gray-3);
+  --u-color_positive_action: #4caf50;
+  --u-color_positive_icon-on-action: var(--color-gray-11);
+
+  /* Syntax colors */
+  --color-syntax-plain: var(--u-color_text);
+  --color-syntax-base: var(--u-color_text);
+  --color-syntax-subtle: var(--color-gray-4);
+  --color-syntax-keyword: var(--color-pink-2);
+  --color-syntax-operator: var(--color-gray-5);
+  --color-syntax-term: var(--color-purple-5);
+  --color-syntax-term-namespace: var(--color-purple-4);
+  --color-syntax-ability: var(--color-pink-1);
+  --color-syntax-type: var(--color-blue-3);
+  --color-syntax-type-namespace: var(--color-blue-2);
+  --color-syntax-constructor: var(--color-blue-3);
+  --color-syntax-constructor-namespace: var(--color-blue-2);
+  --color-syntax-text: var(--color-green-3);
+  --color-syntax-link-hover-bg: var(--color-gray-0);
+  --color-syntax-link-hover-fg: var(--color-gray-11);
+  --color-syntax-monochrome-subtle: var(--u-color_text_subdued);
+  --color-syntax-monochrome-base: var(--u-color_text);
+  --color-syntax-monochrome-em: var(--u-color_text);
+  --color-tooltip-source-bg: var(--color-gray-2);
+}
+
+/* Definition Doc Styles */
+.definition-doc {
+  --color-doc-text: var(--u-color_text);
+  --color-doc-bg: var(--u-color_container);
+  --color-doc-aside-bg: var(--u-color_container_subdued);
+  --color-doc-aside-source-bg: var(--u-color_element_emphasized);
+  --color-doc-callout-bg: var(--u-color_info_container_subdued);
+  --color-doc-callout-source-bg: var(--u-color_element_emphasized);
+  --color-doc-subtle-text: var(--u-color_text_very-subdued);
+  --color-doc-source-bg: var(--u-color_element_subdued);
+  --color-doc-content-border: var(--u-color_border_subdued);
+  --color-doc-divider: var(--u-color_divider);
+  --color-doc-focus-text: var(--u-color_text);
+  --color-doc-focus-bg: var(--u-color_container_selected);
+  --color-doc-focus-aside-bg: var(--u-color_container_subdued_selected);
+  --color-doc-focus-aside-source-bg: var(--u-color_element_emphasized_selected);
+  --color-doc-focus-callout-bg: var(--u-color_info_container_subdued);
+  --color-doc-focus-callout-source-bg: var(--u-color_element_emphasized_selected);
+  --color-doc-focus-subtle-text: var(--u-color_text_very-subdued);
+  --color-doc-focus-source-bg: var(--u-color_container_subdued_selected);
+  --color-doc-focus-content-border: var(--u-color_border_subdued);
+  --c-width_doc_inner-content: auto;
+
+  position: relative;
+  display: flex;
+  line-height: 1.5;
+  flex-direction: column;
+  font-size: var(--font-size-medium);
+  color: var(--color-doc-text);
+  background: var(--color-doc-bg);
+  max-width: 100%;
+}
+
+.focused .definition-doc {
+  --color-doc-text: var(--color-doc-focus-text);
+  --color-doc-bg: var(--color-doc-focus-bg);
+  --color-doc-aside-bg: var(--color-doc-focus-aside-bg);
+  --color-doc-aside-source-bg: var(--color-doc-focus-aside-source-bg);
+  --color-doc-callout-bg: var(--color-doc-focus-callout-bg);
+  --color-doc-callout-source-bg: var(--color-doc-focus-callout-source-bg);
+  --color-doc-subtle-text: var(--color-doc-focus-subtle-text);
+  --color-doc-source-bg: var(--color-doc-focus-source-bg);
+  --color-doc-content-border: var(--color-doc-focus-content-border);
+}
+
+.definition-doc .doc_group .doc_join {
+  white-space: pre-line;
+}
+
+.definition-doc .source.code,
+.definition-doc .sources .source,
+.definition-doc .folded-sources .source,
+.definition-doc .source.example,
+.definition-doc .eval .source,
+.definition-doc .source.signatures .signature {
+  padding: 0.5rem 0.75rem;
+  background: var(--color-doc-source-bg);
+  border-radius: var(--border-radius-base);
+  scrollbar-width: auto;
+  scrollbar-color: var(--u-color_scrollbar) var(--u-color_scrollbar-track);
+  overflow: auto;
+  width: var(--c-width_doc_inner-content);
+}
+
+.definition-doc .source.code,
+.definition-doc .sources .source,
+.definition-doc .folded-sources .source,
+.definition-doc .source.example,
+.definition-doc .source.signatures .signature {
+  margin-bottom: 1rem;
+}
+
+.definition-doc .source code {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.definition-doc .copyable-source {
+  position: relative;
+}
+
+.definition-doc
+  .source:is(.inline-code, .example-inline, .eval-inline, .signature-inline) {
+  display: inline-flex;
+  padding: 0 0.25rem;
+  background: var(--color-doc-source-bg);
+  border-radius: var(--border-radius-base);
+  white-space: nowrap;
+  max-width: var(--c-width_doc_inner-content);
+  scrollbar-width: auto;
+  scrollbar-color: var(--u-color_scrollbar) var(--u-color_scrollbar-track);
+  overflow: auto;
+}
+
+.definition-doc
+  .source:is(.inline-code, .example-inline, .eval-inline, .signature-inline)
+  :is(.inline-code, code) {
+  display: inline-flex;
+  white-space: nowrap;
+}
+
+.definition-doc .eval .result .icon,
+.definition-doc .eval-inline .result .icon {
+  color: var(--color-doc-subtle-text);
+}
+
+.definition-doc .eval {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin-bottom: 1rem;
+}
+
+.definition-doc .eval .result {
+  position: relative;
+}
+
+.definition-doc .eval .result-indicator {
+  position: absolute;
+  left: -0.625rem;
+  top: -0.625rem;
+  height: 1.25rem;
+  width: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-doc-bg);
+  line-height: 1;
+  border-radius: 0.75rem;
+}
+
+.definition-doc .eval .result .icon {
+  font-size: var(--font-size-medium);
+}
+
+.definition-doc strong {
+  font-weight: bold;
+}
+
+.definition-doc .italic {
+  font-style: italic;
+}
+
+.definition-doc .strikethrough {
+  text-decoration: line-through;
+}
+
+.definition-doc blockquote {
+  position: relative;
+  padding: 0.5rem 1.25rem;
+  margin-left: 0rem;
+  margin-bottom: 1rem;
+}
+
+.definition-doc blockquote:before {
+  position: absolute;
+  content: " ";
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--color-doc-content-border);
+  width: 0.25rem;
+  border-radius: var(--border-radius-base);
+}
+
+.definition-doc hr {
+  background: var(--color-doc-divider);
+  margin: 1.5rem 0;
+  border: 0;
+  height: 1px;
+}
+
+.definition-doc p {
+  margin-bottom: 1em;
+}
+
+.definition-doc p:last-child {
+  margin: 0;
+}
+
+.definition-doc ol,
+.definition-doc ul {
+  margin-left: 1.5rem;
+  margin-bottom: 1em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.definition-doc ol:last-child,
+.definition-doc ul:last-child {
+  margin-bottom: 0;
+}
+
+.definition-doc section {
+  margin-bottom: 1rem;
+  margin-top: 1.5rem;
+}
+
+.definition-doc section:first-child {
+  margin-top: 0;
+}
+
+.definition-doc section:last-child {
+  margin-bottom: 0;
+}
+
+:is(
+    .definition-doc h1,
+    .definition-doc h2,
+    .definition-doc h3,
+    .definition-doc h4,
+    .definition-doc h5,
+    .definition-doc h6
+  )
+  p {
+  margin: 0;
+}
+
+.definition-doc h1 {
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.definition-doc h2 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.definition-doc h3 {
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.definition-doc h4,
+.definition-doc h5,
+.definition-doc h6 {
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+/* Syntax Highlighting */
+pre {
+  margin: 0;
+}
+
+.inline-code {
+  display: inline-block;
+}
+
+code {
+  display: inline-block;
+  font-family: var(--font-monospace);
+  line-height: 1.6;
+}
+
+.inline-code code {
+  line-height: 1.4;
+}
+
+code a {
+  display: inline-block;
+  padding: 0 0.125rem;
+  margin: 0 -0.125rem;
+  border-radius: var(--border-radius-base);
+  line-height: 1.4;
+  text-decoration: none;
+  color: inherit;
+}
+
+.rich a:hover,
+code a:hover {
+  background: var(--color-syntax-link-hover-bg);
+  color: var(--color-syntax-link-hover-fg);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.rich .fqn .sep {
+  color: var(--color-syntax-subtle);
+}
+
+.rich .text-literal,
+.rich .bytes-literal,
+.rich .char-literal {
+  color: var(--color-syntax-text);
+}
+
+.rich .boolean-literal,
+.rich .data-constructor-reference {
+  color: var(--color-syntax-constructor);
+}
+
+.rich .var,
+.rich .data-type-params {
+  color: var(--color-syntax-base);
+}
+
+.rich .numeric-literal,
+.rich .type-reference,
+.rich .data-type-modifier {
+  color: var(--color-syntax-type);
+}
+
+.rich .type-reference .fqn .segment {
+  color: var(--color-syntax-type-namespace);
+}
+
+.rich .type-reference .fqn .segment:last-child {
+  color: var(--color-syntax-type);
+}
+
+.rich .term-reference,
+.rich .ability-constructor-reference,
+.rich .hash-qualifier {
+  color: var(--color-syntax-term);
+}
+
+.rich .term-reference .fqn .segment,
+.rich .ability-constructor-reference .fqn .segment,
+.rich .hash-qualifier .fqn .segment {
+  color: var(--color-syntax-term-namespace);
+}
+
+.rich .term-reference .fqn .segment:last-child,
+.rich .ability-constructor-reference .fqn .segment:last-child,
+.rich .hash-qualifier .fqn .segment:last-child {
+  color: var(--color-syntax-term);
+}
+
+.rich .op.cons,
+.rich .op.snoc,
+.rich .op.concat,
+.rich .type-operator,
+.rich .binding-equals,
+.rich .type-ascription-colon {
+  color: var(--color-syntax-operator);
+}
+
+.rich .delay-force-char {
+  color: var(--color-syntax-ability);
+  font-weight: bold;
+}
+
+.rich .control-keyword,
+.rich .data-type-keyword,
+.rich .link-keyword,
+.rich .doc-keyword {
+  color: var(--color-syntax-keyword);
+}
+
+.rich .delimeter-char {
+  color: var(--color-syntax-subtle);
+}
+
+.rich .comment,
+.rich .ability-braces,
+.rich .unit,
+.rich .use-keyword,
+.rich .use-prefix,
+.rich .use-suffix,
+.rich .blank,
+.rich .parenthesis,
+.rich .arrow,
+.rich .doc-delimeter {
+  color: var(--color-syntax-subtle);
+}
+
+/* Additional doc styling for word spacing */
+.definition-doc .word {
+  margin-right: 0.25em;
+}
+
+.definition-doc .word:last-child {
+  margin-right: 0;
+}
+
+.definition-doc .span {
+  display: inline;
+}
+
+.definition-doc .doc_join {
+  display: inline;
+}
+
+.definition-doc .doc_group {
+  display: inline;
+}
+
+.definition-doc .doc_column {
+  margin: 0;
+  list-style-type: none;
+  display: flex;
+  flex-direction: column;
+}

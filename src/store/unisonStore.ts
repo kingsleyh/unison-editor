@@ -22,7 +22,6 @@ export interface EditorTab {
   title: string;
   content: string;
   language: string;
-  definition?: Definition;
   isDirty: boolean;
 }
 

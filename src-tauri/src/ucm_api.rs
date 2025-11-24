@@ -177,6 +177,12 @@ struct TermDefinitionDetail {
     term_definition: TermDefinitionSource,
     #[serde(rename = "signature")]
     signature: Vec<serde_json::Value>, // Array of signature elements
+    #[serde(rename = "termDocs")]
+    #[serde(default)]
+    term_docs: Option<serde_json::Value>, // Doc AST if available
+    #[serde(rename = "termTag")]
+    #[serde(default)]
+    term_tag: Option<String>, // "Plain", "Test", or "Doc"
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -199,11 +205,13 @@ struct TypeDefinitionSource {
     contents: Vec<SourceSegment>, // Array of annotated segments
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct SourceSegment {
-    segment: String,
+// Source segment with annotation metadata from UCM
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceSegment {
+    pub segment: String,
     #[serde(default)]
-    annotation: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotation: Option<serde_json::Value>,
 }
 
 // Public struct for definition summary
@@ -215,9 +223,19 @@ pub struct DefinitionSummary {
     pub def_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
-    pub source: String,
+    // Deprecated: kept for backwards compatibility but will be empty
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    // New: annotated source segments for rich rendering
+    pub segments: Vec<SourceSegment>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub documentation: Option<String>,
+    // Doc AST for Doc terms - this is the parsed Doc literal structure
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc: Option<serde_json::Value>,
+    // Term tag: "Plain", "Test", or "Doc"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 }
 
 // Internal structs for deserializing from UCM API search response
@@ -458,41 +476,37 @@ impl UCMApiClient {
 
         // Try to extract from termDefinitions first
         if let Some((hash, term_detail)) = def_response.term_definitions.iter().next() {
-            // Reassemble source from segments
-            let source: String = term_detail
-                .term_definition
-                .contents
-                .iter()
-                .map(|seg| seg.segment.as_str())
-                .collect();
+            // Clone the annotated segments for rich rendering
+            let segments = term_detail.term_definition.contents.clone();
 
             return Ok(Some(DefinitionSummary {
                 name: term_detail.best_term_name.clone(),
                 hash: hash.clone(),
                 def_type: "term".to_string(),
                 signature: None, // Could parse signature array if needed
-                source,
+                source: None,
+                segments,
                 documentation: None,
+                doc: term_detail.term_docs.clone(),
+                tag: term_detail.term_tag.clone(),
             }));
         }
 
         // Then try typeDefinitions
         if let Some((hash, type_detail)) = def_response.type_definitions.iter().next() {
-            // Reassemble source from segments
-            let source: String = type_detail
-                .type_definition
-                .contents
-                .iter()
-                .map(|seg| seg.segment.as_str())
-                .collect();
+            // Clone the annotated segments for rich rendering
+            let segments = type_detail.type_definition.contents.clone();
 
             return Ok(Some(DefinitionSummary {
                 name: type_detail.best_type_name.clone(),
                 hash: hash.clone(),
                 def_type: "type".to_string(),
                 signature: None,
-                source,
+                source: None,
+                segments,
                 documentation: None,
+                doc: None,
+                tag: None,
             }));
         }
 

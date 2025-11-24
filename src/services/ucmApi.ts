@@ -1,19 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Project, Branch, Definition } from '../store/unisonStore';
+import type { DefinitionSummary } from '../types/syntax';
 
 export interface NamespaceItem {
   name: string;
   type: 'term' | 'type' | 'namespace';
   hash?: string;
-}
-
-export interface DefinitionSummary {
-  name: string;
-  hash: string;
-  type: 'term' | 'type';
-  signature?: string;
-  source: string;
-  documentation?: string;
 }
 
 export interface SearchResult {

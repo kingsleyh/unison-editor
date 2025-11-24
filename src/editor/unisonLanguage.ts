@@ -1,4 +1,5 @@
 import type * as Monaco from 'monaco-editor';
+import { generateMonacoTheme, unisonDarkTheme, type ThemeColors } from '../theme/unisonTheme';
 
 export const unisonLanguageConfig: Monaco.languages.LanguageConfiguration = {
   comments: {
@@ -223,7 +224,7 @@ export const unisonTokenProvider: Monaco.languages.IMonarchLanguage = {
   },
 };
 
-export function registerUnisonLanguage(monaco: typeof Monaco) {
+export function registerUnisonLanguage(monaco: typeof Monaco, theme: ThemeColors = unisonDarkTheme) {
   console.log('Registering Unison language...');
 
   // Register the language
@@ -235,33 +236,9 @@ export function registerUnisonLanguage(monaco: typeof Monaco) {
   // Register the token provider
   monaco.languages.setMonarchTokensProvider('unison', unisonTokenProvider);
 
-  // Define custom theme with Unison syntax colors
-  monaco.editor.defineTheme('unison-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'keyword', foreground: 'C586C0' }, // Purple for keywords
-      { token: 'keyword.type', foreground: '4EC9B0' }, // Teal for type keywords
-      { token: 'keyword.control', foreground: 'C586C0' }, // Purple for control
-      { token: 'type.identifier', foreground: '4EC9B0' }, // Teal for types
-      { token: 'identifier', foreground: '9CDCFE' }, // Light blue for identifiers
-      { token: 'operator', foreground: 'D4D4D4' }, // Default for operators
-      { token: 'number', foreground: 'B5CEA8' }, // Green for numbers
-      { token: 'number.hex', foreground: 'B5CEA8' },
-      { token: 'number.octal', foreground: 'B5CEA8' },
-      { token: 'number.binary', foreground: 'B5CEA8' },
-      { token: 'number.float', foreground: 'B5CEA8' },
-      { token: 'string', foreground: 'CE9178' }, // Orange for strings
-      { token: 'string.quote', foreground: 'CE9178' },
-      { token: 'string.escape', foreground: 'D7BA7D' }, // Yellow for escapes
-      { token: 'comment', foreground: '6A9955' }, // Green for comments
-      { token: 'comment.doc', foreground: '6A9955' },
-      { token: 'comment.doc.code', foreground: '4EC9B0' }, // Teal for doc code
-      { token: 'comment.doc.directive', foreground: 'C586C0' }, // Purple for directives
-      { token: 'comment.pragma', foreground: 'C586C0' },
-    ],
-    colors: {},
-  });
+  // Define custom theme using unified theme system
+  const monacoTheme = generateMonacoTheme(theme);
+  monaco.editor.defineTheme('unison-dark', monacoTheme);
 
   console.log('Unison language registered successfully');
 }

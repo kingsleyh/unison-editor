@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Editor } from './components/Editor';
 import { ProjectBranchSelector } from './components/ProjectBranchSelector';
-import { NamespaceBrowser } from './components/NamespaceBrowser';
+import { Navigation } from './components/Navigation';
+import { DefinitionStack } from './components/DefinitionStack';
 import { ResizableSplitter } from './components/ResizableSplitter';
+import { TabBar } from './components/TabBar';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
+import { applyThemeVariables, loadTheme } from './theme/unisonTheme';
 import './App.css';
 
 function App() {
@@ -22,8 +25,18 @@ function App() {
   } = useUnisonStore();
 
   const [connectionChecking, setConnectionChecking] = useState(true);
+  const [selectedDefinition, setSelectedDefinition] = useState<{
+    name: string;
+    type: 'term' | 'type';
+  } | null>(null);
 
   const client = getUCMApiClient();
+
+  // Initialize theme system on mount
+  useEffect(() => {
+    const theme = loadTheme();
+    applyThemeVariables(theme);
+  }, []);
 
   // Check UCM connection on mount
   useEffect(() => {
@@ -43,52 +56,51 @@ function App() {
     }
   }
 
-  async function handleOpenDefinition(name: string, type: 'term' | 'type') {
-    const { currentProject, currentBranch } = useUnisonStore.getState();
+  function handleOpenDefinition(name: string, type: 'term' | 'type') {
+    // Show in definition stack
+    setSelectedDefinition({ name, type });
+  }
 
-    if (!currentProject || !currentBranch) {
-      alert('Please select a project and branch first');
+  function handleFileClick(path: string, name: string) {
+    // Check if file is already open in a tab
+    const existingTab = tabs.find((t) => t.title === name);
+    if (existingTab) {
+      setActiveTab(existingTab.id);
       return;
     }
 
-    try {
-      const definition = await client.getDefinition(
-        currentProject.name,
-        currentBranch.name,
-        name
-      );
+    // Create new tab for the file
+    // For now, use empty content. Will load from file system later
+    const newTab: EditorTab = {
+      id: `tab-${Date.now()}`,
+      title: name,
+      content: `-- ${name}\n\n`,
+      language: 'unison',
+      isDirty: false,
+    };
+    addTab(newTab);
+  }
 
-      if (!definition) {
-        alert(`Definition not found: ${name}`);
-        return;
-      }
+  function handleAddToScratch(source: string, name: string) {
+    const activeTab = getActiveTab();
 
-      // Check if already open in a tab
-      const existingTab = tabs.find((t) => t.definition?.name === name);
-      if (existingTab) {
-        setActiveTab(existingTab.id);
-        return;
-      }
-
-      // Create new tab
+    if (activeTab) {
+      // Append to existing active tab with a comment
+      const newContent = `${activeTab.content}\n\n-- From ${name}\n${source}\n`;
+      updateTab(activeTab.id, {
+        content: newContent,
+        isDirty: true,
+      });
+    } else {
+      // Create new scratch file with the definition
       const newTab: EditorTab = {
         id: `tab-${Date.now()}`,
-        title: name,
-        content: definition.source,
+        title: 'Scratch',
+        content: `-- Scratch file\n\n-- From ${name}\n${source}\n`,
         language: 'unison',
-        definition: {
-          name: definition.name,
-          hash: definition.hash,
-          type,
-          source: definition.source,
-        },
         isDirty: false,
       };
-
       addTab(newTab);
-    } catch (err) {
-      console.error('Failed to open definition:', err);
-      alert(`Failed to open definition: ${err}`);
     }
   }
 
@@ -96,9 +108,11 @@ function App() {
     if (activeTabId && value !== undefined) {
       const activeTab = getActiveTab();
       if (activeTab) {
+        // Mark as dirty if content changed from original
+        const isDirty = value !== (activeTab.content || '');
         updateTab(activeTabId, {
           content: value,
-          isDirty: value !== activeTab.definition?.source,
+          isDirty,
         });
       }
     }
@@ -107,8 +121,8 @@ function App() {
   function handleNewFile() {
     const newTab: EditorTab = {
       id: `tab-${Date.now()}`,
-      title: 'Untitled',
-      content: '-- New Unison file\n\n',
+      title: 'Scratch',
+      content: '-- Scratch file\n\n',
       language: 'unison',
       isDirty: false,
     };
@@ -139,55 +153,54 @@ function App() {
         ) : (
           <ResizableSplitter
             minLeftWidth={200}
-            maxLeftWidth={600}
+            maxLeftWidth={400}
             defaultLeftWidth={250}
-            left={<NamespaceBrowser onOpenDefinition={handleOpenDefinition} />}
+            left={
+              <Navigation
+                onFileClick={handleFileClick}
+                onDefinitionClick={handleOpenDefinition}
+              />
+            }
             right={
-              <main className="main-content">
-                <div className="tabs-bar">
-                  <div className="tabs">
-                    {tabs.map((tab) => (
-                      <div
-                        key={tab.id}
-                        className={`tab ${tab.id === activeTabId ? 'active' : ''}`}
-                        onClick={() => setActiveTab(tab.id)}
-                      >
-                        <span className="tab-title">
-                          {tab.title}
-                          {tab.isDirty && ' •'}
-                        </span>
-                        <button
-                          className="tab-close"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeTab(tab.id);
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <button className="new-file-btn" onClick={handleNewFile}>
-                    + New
-                  </button>
-                </div>
-
-                <div className="editor-container">
-                  {activeTab ? (
-                    <Editor
-                      value={activeTab.content}
-                      onChange={handleEditorChange}
-                      language={activeTab.language}
+              <ResizableSplitter
+                minLeftWidth={300}
+                maxLeftWidth={800}
+                defaultLeftWidth={400}
+                left={
+                  <DefinitionStack
+                    selectedDefinition={selectedDefinition}
+                    onAddToScratch={handleAddToScratch}
+                  />
+                }
+                right={
+                  <main className="main-content">
+                    <TabBar
+                      tabs={tabs}
+                      activeTabId={activeTabId}
+                      onTabClick={setActiveTab}
+                      onTabClose={removeTab}
+                      onNewFile={handleNewFile}
                     />
-                  ) : (
-                    <div className="no-editor">
-                      <p>No file open</p>
-                      <button onClick={handleNewFile}>Create New File</button>
+
+                    <div className="editor-container">
+                      {activeTab ? (
+                        <Editor
+                          value={activeTab.content}
+                          onChange={handleEditorChange}
+                          language={activeTab.language}
+                        />
+                      ) : (
+                        <div className="no-editor">
+                          <p>No scratch file open</p>
+                          <button onClick={handleNewFile}>
+                            Create Scratch File
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </main>
+                  </main>
+                }
+              />
             }
           />
         )}
