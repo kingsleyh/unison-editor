@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Editor } from './components/Editor';
 import { ProjectBranchSelector } from './components/ProjectBranchSelector';
 import { Navigation } from './components/Navigation';
 import { DefinitionStack } from './components/DefinitionStack';
 import { ResizableSplitter } from './components/ResizableSplitter';
 import { TabBar } from './components/TabBar';
+import { CodebaseActions } from './components/CodebaseActions';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
@@ -31,6 +32,7 @@ function App() {
   } | null>(null);
 
   const client = getUCMApiClient();
+  const saveTimeoutRef = useRef<number | null>(null);
 
   // Initialize theme system on mount
   useEffect(() => {
@@ -61,24 +63,38 @@ function App() {
     setSelectedDefinition({ name, type });
   }
 
-  function handleFileClick(path: string, name: string) {
+  async function handleFileClick(path: string, name: string) {
     // Check if file is already open in a tab
-    const existingTab = tabs.find((t) => t.title === name);
+    const existingTab = tabs.find((t) => t.filePath === path);
     if (existingTab) {
       setActiveTab(existingTab.id);
       return;
     }
 
-    // Create new tab for the file
-    // For now, use empty content. Will load from file system later
-    const newTab: EditorTab = {
-      id: `tab-${Date.now()}`,
-      title: name,
-      content: `-- ${name}\n\n`,
-      language: 'unison',
-      isDirty: false,
-    };
-    addTab(newTab);
+    try {
+      // Load file content from disk
+      const { getFileSystemService } = await import('./services/fileSystem');
+      const fileSystemService = getFileSystemService();
+      const content = await fileSystemService.readFile(path);
+
+      // Create new tab for the file
+      const newTab: EditorTab = {
+        id: `tab-${Date.now()}`,
+        title: name,
+        content,
+        language: 'unison',
+        isDirty: false,
+        filePath: path,
+      };
+      addTab(newTab);
+
+      // Add to recent files
+      const { addRecentFile } = useUnisonStore.getState();
+      addRecentFile(path);
+    } catch (err) {
+      console.error('Failed to load file:', err);
+      alert(`Failed to load file: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   function handleAddToScratch(source: string, name: string) {
@@ -104,19 +120,82 @@ function App() {
     }
   }
 
-  function handleEditorChange(value: string | undefined) {
+  // Manual save function (for Cmd+S)
+  const saveCurrentFile = useCallback(async () => {
+    const activeTab = getActiveTab();
+    if (!activeTab || !activeTab.filePath || !activeTab.isDirty) {
+      return;
+    }
+
+    try {
+      // Set saving status
+      updateTab(activeTab.id, { saveStatus: 'saving' });
+
+      const { getFileSystemService } = await import('./services/fileSystem');
+      const fileSystemService = getFileSystemService();
+      await fileSystemService.writeFile(activeTab.filePath, activeTab.content);
+
+      // Mark as saved
+      updateTab(activeTab.id, {
+        isDirty: false,
+        saveStatus: 'saved',
+      });
+
+      // Clear "saved" indicator after 2 seconds
+      setTimeout(() => {
+        updateTab(activeTab.id, { saveStatus: undefined });
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to save file:', err);
+      updateTab(activeTab.id, { saveStatus: 'error' });
+
+      // Clear error after 3 seconds
+      setTimeout(() => {
+        updateTab(activeTab.id, { saveStatus: undefined });
+      }, 3000);
+    }
+  }, [getActiveTab, updateTab]);
+
+  // Debounced auto-save
+  async function handleEditorChange(value: string | undefined) {
     if (activeTabId && value !== undefined) {
       const activeTab = getActiveTab();
       if (activeTab) {
-        // Mark as dirty if content changed from original
-        const isDirty = value !== (activeTab.content || '');
+        // Mark as dirty if content changed
+        const isDirty = value !== activeTab.content;
         updateTab(activeTabId, {
           content: value,
           isDirty,
         });
+
+        // Clear existing save timeout
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+
+        // Debounced auto-save (only if file has a path and is dirty)
+        if (activeTab.filePath && isDirty) {
+          saveTimeoutRef.current = window.setTimeout(async () => {
+            await saveCurrentFile();
+          }, 500); // 500ms debounce
+        }
       }
     }
   }
+
+  // Keyboard shortcut handler
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Cmd+S (Mac) or Ctrl+S (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        saveCurrentFile();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [saveCurrentFile]);
 
   function handleNewFile() {
     const newTab: EditorTab = {
@@ -174,13 +253,15 @@ function App() {
                 }
                 right={
                   <main className="main-content">
-                    <TabBar
-                      tabs={tabs}
-                      activeTabId={activeTabId}
-                      onTabClick={setActiveTab}
-                      onTabClose={removeTab}
-                      onNewFile={handleNewFile}
-                    />
+                    <div className="editor-header">
+                      <TabBar
+                        tabs={tabs}
+                        activeTabId={activeTabId}
+                        onTabClick={setActiveTab}
+                        onTabClose={removeTab}
+                      />
+                      <CodebaseActions />
+                    </div>
 
                     <div className="editor-container">
                       {activeTab ? (
@@ -188,6 +269,8 @@ function App() {
                           value={activeTab.content}
                           onChange={handleEditorChange}
                           language={activeTab.language}
+                          filePath={activeTab.filePath}
+                          onDefinitionClick={handleOpenDefinition}
                         />
                       ) : (
                         <div className="no-editor">

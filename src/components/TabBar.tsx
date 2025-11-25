@@ -6,7 +6,6 @@ interface TabBarProps {
   activeTabId: string | null;
   onTabClick: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
-  onNewFile: () => void;
 }
 
 export function TabBar({
@@ -14,7 +13,6 @@ export function TabBar({
   activeTabId,
   onTabClick,
   onTabClose,
-  onNewFile,
 }: TabBarProps) {
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [hasOverflow, setHasOverflow] = useState(false);
@@ -69,7 +67,10 @@ export function TabBar({
           >
             <span className="tab-title">
               {tab.title}
-              {tab.isDirty && ' •'}
+              {tab.isDirty && !tab.saveStatus && <span className="tab-dirty">●</span>}
+              {tab.saveStatus === 'saving' && <span className="tab-saving">⟳</span>}
+              {tab.saveStatus === 'saved' && <span className="tab-saved">✓</span>}
+              {tab.saveStatus === 'error' && <span className="tab-error">✕</span>}
             </span>
             <button
               className="tab-close"
@@ -106,7 +107,10 @@ export function TabBar({
                   >
                     <span className="tab-dropdown-title">
                       {tab.title}
-                      {tab.isDirty && ' •'}
+                      {tab.isDirty && !tab.saveStatus && <span className="tab-dirty">●</span>}
+                      {tab.saveStatus === 'saving' && <span className="tab-saving">⟳</span>}
+                      {tab.saveStatus === 'saved' && <span className="tab-saved">✓</span>}
+                      {tab.saveStatus === 'error' && <span className="tab-error">✕</span>}
                     </span>
                     <button
                       className="tab-dropdown-close"
@@ -123,9 +127,6 @@ export function TabBar({
             )}
           </div>
         )}
-        <button className="new-file-btn" onClick={onNewFile}>
-          + New
-        </button>
       </div>
     </div>
   );

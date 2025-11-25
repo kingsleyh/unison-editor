@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DefinitionCard } from './DefinitionCard';
 import { getUCMApiClient } from '../services/ucmApi';
 import { useUnisonStore } from '../store/unisonStore';
@@ -11,6 +11,7 @@ interface DefinitionStackProps {
 
 interface DefinitionCardState {
   id: string;
+  fqn: string; // Store the FQN used to look up this definition
   definition: DefinitionSummary | null;
   loading: boolean;
   error: string | null;
@@ -26,37 +27,46 @@ export function DefinitionStack({
 }: DefinitionStackProps) {
   const { currentProject, currentBranch } = useUnisonStore();
   const [cards, setCards] = useState<DefinitionCardState[]>([]);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const client = getUCMApiClient();
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // When a new definition is selected, add it to the top of the stack
+  // When a new definition is selected, add it to the stack or select existing
   useEffect(() => {
     if (!selectedDefinition || !currentProject || !currentBranch) {
       return;
     }
 
-    // Check if this definition is already in the stack
+    // Check if this definition is already in the stack (compare by FQN)
     const existing = cards.find(
       (card) =>
-        card.definition?.name === selectedDefinition.name &&
-        card.definition?.type === selectedDefinition.type
+        card.fqn === selectedDefinition.name &&
+        (card.definition?.type === selectedDefinition.type || card.loading)
     );
 
     if (existing) {
-      // Move to top if already exists
-      setCards((prev) => [existing, ...prev.filter((c) => c.id !== existing.id)]);
+      // Select the existing card and scroll to it
+      setSelectedCardId(existing.id);
+      // Scroll to the card
+      setTimeout(() => {
+        const cardElement = cardRefs.current.get(existing.id);
+        cardElement?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 0);
       return;
     }
 
     // Create new card with loading state
     const newCard: DefinitionCardState = {
       id: `${selectedDefinition.type}-${selectedDefinition.name}-${Date.now()}`,
+      fqn: selectedDefinition.name,
       definition: null,
       loading: true,
       error: null,
     };
 
-    // Add to top of stack
+    // Add to top of stack and select it
     setCards((prev) => [newCard, ...prev]);
+    setSelectedCardId(newCard.id);
 
     // Load definition
     loadDefinition(newCard.id, selectedDefinition.name);
@@ -65,6 +75,12 @@ export function DefinitionStack({
   async function loadDefinition(cardId: string, name: string) {
     if (!currentProject || !currentBranch) return;
 
+    console.log('Loading definition:', {
+      name,
+      project: currentProject.name,
+      branch: currentBranch.name
+    });
+
     try {
       const definition = await client.getDefinition(
         currentProject.name,
@@ -72,7 +88,10 @@ export function DefinitionStack({
         name
       );
 
+      console.log('Definition result:', definition);
+
       if (!definition) {
+        console.log('Definition not found for:', name);
         setCards((prev) =>
           prev.map((card) =>
             card.id === cardId
@@ -112,30 +131,39 @@ export function DefinitionStack({
 
   function handleReferenceClick(name: string, type: 'term' | 'type') {
     // When clicking a reference in a card, add that definition to the stack
-    // This will trigger the useEffect above
     if (!currentProject || !currentBranch) return;
 
-    // Check if already in stack
+    // Check if already in stack (compare by FQN)
     const existing = cards.find(
-      (card) => card.definition?.name === name && card.definition?.type === type
+      (card) => card.fqn === name && (card.definition?.type === type || card.loading)
     );
 
     if (existing) {
-      // Move to top
-      setCards((prev) => [existing, ...prev.filter((c) => c.id !== existing.id)]);
+      // Select the existing card and scroll to it
+      setSelectedCardId(existing.id);
+      setTimeout(() => {
+        const cardElement = cardRefs.current.get(existing.id);
+        cardElement?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 0);
       return;
     }
 
     // Create and load new card
     const newCard: DefinitionCardState = {
       id: `${type}-${name}-${Date.now()}`,
+      fqn: name,
       definition: null,
       loading: true,
       error: null,
     };
 
     setCards((prev) => [newCard, ...prev]);
+    setSelectedCardId(newCard.id);
     loadDefinition(newCard.id, name);
+  }
+
+  function handleCardClick(cardId: string) {
+    setSelectedCardId(cardId);
   }
 
   if (cards.length === 0) {
@@ -153,25 +181,55 @@ export function DefinitionStack({
     <div className="definition-stack">
       <div className="definition-stack-scroll">
         {cards.map((card) => {
+          const isSelected = card.id === selectedCardId;
+
           if (card.loading) {
             return (
-              <div key={card.id} className="definition-card loading-card">
-                <div className="loading">Loading definition...</div>
+              <div
+                key={card.id}
+                ref={(el) => {
+                  if (el) cardRefs.current.set(card.id, el);
+                  else cardRefs.current.delete(card.id);
+                }}
+                className={`definition-card loading-card ${isSelected ? 'selected' : ''}`}
+                onClick={() => handleCardClick(card.id)}
+              >
+                <div className="definition-card-header">
+                  <span className="definition-name">{card.fqn}</span>
+                </div>
+                <div className="loading">
+                  <span className="loading-spinner"></span>
+                  Loading...
+                </div>
               </div>
             );
           }
 
           if (card.error) {
             return (
-              <div key={card.id} className="definition-card error-card">
-                <div className="definition-error">
-                  <p>{card.error}</p>
+              <div
+                key={card.id}
+                ref={(el) => {
+                  if (el) cardRefs.current.set(card.id, el);
+                  else cardRefs.current.delete(card.id);
+                }}
+                className={`definition-card error-card ${isSelected ? 'selected' : ''}`}
+                onClick={() => handleCardClick(card.id)}
+              >
+                <div className="definition-card-header">
+                  <span className="definition-name">{card.fqn}</span>
                   <button
                     className="definition-card-btn close-btn"
-                    onClick={() => handleCloseCard(card.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCloseCard(card.id);
+                    }}
                   >
                     ×
                   </button>
+                </div>
+                <div className="definition-error">
+                  <p>{card.error}</p>
                 </div>
               </div>
             );
@@ -184,10 +242,16 @@ export function DefinitionStack({
           return (
             <DefinitionCard
               key={card.id}
+              ref={(el) => {
+                if (el) cardRefs.current.set(card.id, el);
+                else cardRefs.current.delete(card.id);
+              }}
               definition={card.definition}
+              isSelected={isSelected}
               onAddToScratch={onAddToScratch}
               onClose={() => handleCloseCard(card.id)}
               onReferenceClick={handleReferenceClick}
+              onClick={() => handleCardClick(card.id)}
             />
           );
         })}

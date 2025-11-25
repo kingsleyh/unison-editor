@@ -1,35 +1,48 @@
+import { forwardRef } from 'react';
 import { SyntaxRenderer } from './SyntaxRenderer';
 import { DocRenderer } from './DocRenderer';
 import type { DefinitionSummary } from '../types/syntax';
 
 interface DefinitionCardProps {
   definition: DefinitionSummary;
+  isSelected?: boolean;
   onAddToScratch: (source: string, name: string) => void;
   onClose: () => void;
   onReferenceClick: (name: string, type: 'term' | 'type') => void;
+  onClick?: () => void;
 }
 
 /**
  * A card displaying a single definition with UCM Desktop-style rendering
  */
-export function DefinitionCard({
-  definition,
-  onAddToScratch,
-  onClose,
-  onReferenceClick,
-}: DefinitionCardProps) {
-  function handleAddToScratch() {
-    // Reassemble plain text source from segments for adding to scratch
-    const plainSource = definition.segments.map((seg) => seg.segment).join('');
-    onAddToScratch(plainSource, definition.name);
-  }
+export const DefinitionCard = forwardRef<HTMLDivElement, DefinitionCardProps>(
+  function DefinitionCard(
+    {
+      definition,
+      isSelected = false,
+      onAddToScratch,
+      onClose,
+      onReferenceClick,
+      onClick,
+    },
+    ref
+  ) {
+    function handleAddToScratch() {
+      // Reassemble plain text source from segments for adding to scratch
+      const plainSource = definition.segments.map((seg) => seg.segment).join('');
+      onAddToScratch(plainSource, definition.name);
+    }
 
-  // Check if this is a Doc term (has doc AST)
-  const isDocType = definition.tag === 'Doc' || definition.name.endsWith('.doc');
-  const hasDocAst = definition.doc && Array.isArray(definition.doc) && definition.doc.length > 0;
+    // Check if this is a Doc term (has doc AST)
+    const isDocType = definition.tag === 'Doc' || definition.name.endsWith('.doc');
+    const hasDocAst = definition.doc && Array.isArray(definition.doc) && definition.doc.length > 0;
 
-  return (
-    <div className="definition-card">
+    return (
+      <div
+        ref={ref}
+        className={`definition-card ${isSelected ? 'selected' : ''}`}
+        onClick={onClick}
+      >
       {!isDocType && (
         <div className="definition-card-header">
           <div className="definition-card-info">
@@ -82,4 +95,5 @@ export function DefinitionCard({
       </div>
     </div>
   );
-}
+  }
+);

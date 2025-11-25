@@ -2,6 +2,9 @@ use crate::ucm_api::{
     Branch, CurrentContext, Definition, DefinitionSummary, NamespaceItem, Project, SearchResult,
     UCMApiClient,
 };
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -180,4 +183,284 @@ pub async fn configure_ucm(
     let mut client_guard = state.ucm_client.lock().unwrap();
     *client_guard = Some(UCMApiClient::new(&host, port));
     Ok(())
+}
+
+// File System Commands
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileNode {
+    pub name: String,
+    pub path: String,
+    #[serde(rename = "isDirectory")]
+    pub is_directory: bool,
+    pub children: Option<Vec<FileNode>>,
+}
+
+#[tauri::command]
+pub async fn read_file(path: String) -> Result<String, String> {
+    fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read file '{}': {}", path, e))
+}
+
+#[tauri::command]
+pub async fn write_file(path: String, content: String) -> Result<(), String> {
+    // Ensure parent directory exists
+    if let Some(parent) = Path::new(&path).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write file '{}': {}", path, e))
+}
+
+#[tauri::command]
+pub async fn list_directory(path: String, recursive: bool) -> Result<Vec<FileNode>, String> {
+    let path_buf = PathBuf::from(&path);
+
+    if !path_buf.exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    if !path_buf.is_dir() {
+        return Err(format!("Path is not a directory: {}", path));
+    }
+
+    list_directory_impl(&path_buf, recursive)
+}
+
+fn list_directory_impl(path: &Path, recursive: bool) -> Result<Vec<FileNode>, String> {
+    let entries = fs::read_dir(path)
+        .map_err(|e| format!("Failed to read directory '{}': {}", path.display(), e))?;
+
+    let mut nodes = Vec::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        let metadata = entry.metadata()
+            .map_err(|e| format!("Failed to read metadata: {}", e))?;
+
+        let name = entry.file_name()
+            .to_string_lossy()
+            .to_string();
+
+        // Skip hidden files (starting with .)
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let is_directory = metadata.is_dir();
+        let path_str = path.to_string_lossy().to_string();
+
+        let children = if is_directory && recursive {
+            Some(list_directory_impl(&path, recursive)?)
+        } else {
+            None
+        };
+
+        nodes.push(FileNode {
+            name,
+            path: path_str,
+            is_directory,
+            children,
+        });
+    }
+
+    // Sort: directories first, then alphabetically
+    nodes.sort_by(|a, b| {
+        match (a.is_directory, b.is_directory) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        }
+    });
+
+    Ok(nodes)
+}
+
+#[tauri::command]
+pub async fn create_file(path: String, is_directory: bool) -> Result<(), String> {
+    let path_buf = PathBuf::from(&path);
+
+    if path_buf.exists() {
+        return Err(format!("Path already exists: {}", path));
+    }
+
+    if is_directory {
+        fs::create_dir_all(&path_buf)
+            .map_err(|e| format!("Failed to create directory '{}': {}", path, e))?;
+    } else {
+        // Ensure parent directory exists
+        if let Some(parent) = path_buf.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+        }
+
+        fs::write(&path_buf, "")
+            .map_err(|e| format!("Failed to create file '{}': {}", path, e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_file(path: String) -> Result<(), String> {
+    let path_buf = PathBuf::from(&path);
+
+    if !path_buf.exists() {
+        return Err(format!("Path does not exist: {}", path));
+    }
+
+    if path_buf.is_dir() {
+        fs::remove_dir_all(&path_buf)
+            .map_err(|e| format!("Failed to delete directory '{}': {}", path, e))?;
+    } else {
+        fs::remove_file(&path_buf)
+            .map_err(|e| format!("Failed to delete file '{}': {}", path, e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
+    let old_path_buf = PathBuf::from(&old_path);
+    let new_path_buf = PathBuf::from(&new_path);
+
+    if !old_path_buf.exists() {
+        return Err(format!("Source path does not exist: {}", old_path));
+    }
+
+    if new_path_buf.exists() {
+        return Err(format!("Destination path already exists: {}", new_path));
+    }
+
+    fs::rename(&old_path_buf, &new_path_buf)
+        .map_err(|e| format!("Failed to rename '{}' to '{}': {}", old_path, new_path, e))
+}
+
+#[tauri::command]
+pub async fn file_exists(path: String) -> Result<bool, String> {
+    Ok(PathBuf::from(&path).exists())
+}
+
+// LSP Commands
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::sync::Mutex as TokioMutex;
+use std::sync::Arc;
+
+pub struct LSPConnection {
+    pub stream: Arc<TokioMutex<Option<TcpStream>>>,
+}
+
+impl Default for LSPConnection {
+    fn default() -> Self {
+        Self {
+            stream: Arc::new(TokioMutex::new(None)),
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn lsp_connect(
+    host: String,
+    port: u16,
+    state: State<'_, LSPConnection>,
+) -> Result<(), String> {
+    let addr = format!("{}:{}", host, port);
+    let stream = TcpStream::connect(&addr)
+        .await
+        .map_err(|e| format!("Failed to connect to LSP server at {}: {}", addr, e))?;
+
+    let mut guard = state.stream.lock().await;
+    *guard = Some(stream);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn lsp_disconnect(state: State<'_, LSPConnection>) -> Result<(), String> {
+    let mut guard = state.stream.lock().await;
+    if let Some(stream) = guard.take() {
+        drop(stream); // Close the connection
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn lsp_send_request(
+    message: String,
+    state: State<'_, LSPConnection>,
+) -> Result<String, String> {
+    let mut guard = state.stream.lock().await;
+    let stream = guard
+        .as_mut()
+        .ok_or("LSP connection not established")?;
+
+    // LSP uses Content-Length header format
+    let content_length = message.len();
+    let request = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        content_length,
+        message
+    );
+
+    // Send the request
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .map_err(|e| format!("Failed to send LSP request: {}", e))?;
+
+    stream
+        .flush()
+        .await
+        .map_err(|e| format!("Failed to flush LSP stream: {}", e))?;
+
+    // Read the response
+    let response = read_lsp_message(stream)
+        .await
+        .map_err(|e| format!("Failed to read LSP response: {}", e))?;
+
+    Ok(response)
+}
+
+async fn read_lsp_message(stream: &mut TcpStream) -> Result<String, anyhow::Error> {
+    // Read headers
+    let mut headers = Vec::new();
+    let mut buffer = [0u8; 1];
+    let mut prev_char = '\0';
+
+    loop {
+        stream.read_exact(&mut buffer).await?;
+        let ch = buffer[0] as char;
+        headers.push(ch);
+
+        // Check for \r\n\r\n (end of headers)
+        if headers.len() >= 4 {
+            let last_four: String = headers.iter().rev().take(4).rev().collect();
+            if last_four == "\r\n\r\n" {
+                break;
+            }
+        }
+
+        prev_char = ch;
+    }
+
+    // Parse Content-Length
+    let headers_str: String = headers.iter().collect();
+    let content_length = headers_str
+        .lines()
+        .find(|line| line.starts_with("Content-Length:"))
+        .and_then(|line| line.split(':').nth(1))
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .ok_or_else(|| anyhow::anyhow!("Missing or invalid Content-Length header"))?;
+
+    // Read the content
+    let mut content = vec![0u8; content_length];
+    stream.read_exact(&mut content).await?;
+
+    Ok(String::from_utf8(content)?)
 }

@@ -25,6 +25,9 @@ export const unisonLanguageConfig: Monaco.languages.LanguageConfiguration = {
     { open: '"', close: '"' },
     { open: "'", close: "'" },
   ],
+  // Define what constitutes a "word" in Unison
+  // Unison identifiers can contain letters, numbers, underscores, apostrophes, and exclamation marks
+  wordPattern: /[a-zA-Z_][\w'!]*/,
 };
 
 export const unisonTokenProvider: Monaco.languages.IMonarchLanguage = {

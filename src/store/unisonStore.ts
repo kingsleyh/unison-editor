@@ -23,6 +23,8 @@ export interface EditorTab {
   content: string;
   language: string;
   isDirty: boolean;
+  filePath?: string; // Optional: path to the file on disk
+  saveStatus?: 'saved' | 'saving' | 'error'; // Save status indicator
 }
 
 interface UnisonState {
@@ -45,6 +47,10 @@ interface UnisonState {
   tabs: EditorTab[];
   activeTabId: string | null;
 
+  // File system state
+  workspaceDirectory: string | null;
+  recentFiles: string[];
+
   // Actions
   setConnection: (host: string, port: number, lspPort: number) => void;
   setConnected: (connected: boolean) => void;
@@ -60,6 +66,10 @@ interface UnisonState {
   setActiveTab: (tabId: string) => void;
   updateTab: (tabId: string, updates: Partial<EditorTab>) => void;
   getActiveTab: () => EditorTab | null;
+
+  // File system actions
+  setWorkspaceDirectory: (directory: string | null) => void;
+  addRecentFile: (filePath: string) => void;
 }
 
 export const useUnisonStore = create<UnisonState>((set, get) => ({
@@ -78,6 +88,9 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
 
   tabs: [],
   activeTabId: null,
+
+  workspaceDirectory: localStorage.getItem('workspaceDirectory') || null,
+  recentFiles: JSON.parse(localStorage.getItem('recentFiles') || '[]'),
 
   // Actions
   setConnection: (host, port, lspPort) =>
@@ -137,4 +150,25 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
     const state = get();
     return state.tabs.find((t) => t.id === state.activeTabId) || null;
   },
+
+  // File system actions
+  setWorkspaceDirectory: (directory) => {
+    if (directory) {
+      localStorage.setItem('workspaceDirectory', directory);
+    } else {
+      localStorage.removeItem('workspaceDirectory');
+    }
+    set({ workspaceDirectory: directory });
+  },
+
+  addRecentFile: (filePath) =>
+    set((state) => {
+      const recentFiles = [
+        filePath,
+        ...state.recentFiles.filter((f) => f !== filePath),
+      ].slice(0, 10); // Keep only last 10 files
+
+      localStorage.setItem('recentFiles', JSON.stringify(recentFiles));
+      return { recentFiles };
+    }),
 }));

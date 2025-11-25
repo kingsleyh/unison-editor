@@ -1,4 +1,8 @@
+import { useState } from 'react';
 import type { SourceSegment, Annotation } from '../types/syntax';
+import { getHelpForSegment } from '../utils/syntaxHelp';
+import { getUCMApiClient } from '../services/ucmApi';
+import { useUnisonStore } from '../store/unisonStore';
 
 interface SyntaxRendererProps {
   segments: SourceSegment[];
@@ -18,21 +22,137 @@ export function InlineSyntaxSegments({ segments, onReferenceClick }: SyntaxRende
  * Applies syntax highlighting and makes references clickable
  */
 export function SyntaxRenderer({ segments, onReferenceClick }: SyntaxRendererProps) {
+  const [tooltip, setTooltip] = useState<{
+    content: string;
+    position: { x: number; y: number };
+  } | null>(null);
+  const [hoverTimeout, setHoverTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  const ucmClient = getUCMApiClient();
+  const { currentProject, currentBranch } = useUnisonStore();
+
+  function handleMouseEnter(
+    e: React.MouseEvent,
+    segment: SourceSegment,
+    _index: number
+  ) {
+    // Clear any existing hover timeout
+    if (hoverTimeout) {
+      clearTimeout(hoverTimeout);
+    }
+
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    // Add a 300ms delay like Monaco hover
+    const timeout = setTimeout(async () => {
+      const text = segment.segment.trim();
+      const annotation = segment.annotation;
+
+      // Check for keyword/literal help first (same as Monaco hover)
+      const help = getHelpForSegment(text);
+      if (help) {
+        setTooltip({
+          content: help.description,
+          position: { x: clientX, y: clientY }
+        });
+        return;
+      }
+
+      // For references, fetch signature from UCM (same format as Monaco hover)
+      if (annotation && (annotation.tag === 'TermReference' || annotation.tag === 'TypeReference')) {
+        if (!currentProject || !currentBranch) return;
+
+        try {
+          const hash = annotation.contents;
+          const definition = await ucmClient.getDefinition(
+            currentProject.name,
+            currentBranch.name,
+            hash
+          );
+
+          if (definition) {
+            // Match Monaco hover format:
+            // - For types: "type TypeName"
+            // - For abilities: "ability AbilityName"
+            // - For terms: just the signature (no name, no hash)
+            let content = '';
+            if (annotation.tag === 'TypeReference') {
+              const isAbility = definition.tag === 'Ability';
+              content = isAbility ? `ability ${definition.name}` : `type ${definition.name}`;
+            } else {
+              // For terms, show just the signature
+              content = definition.signature || '';
+            }
+
+            if (content) {
+              setTooltip({
+                content: content,
+                position: { x: clientX, y: clientY }
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch definition for tooltip:', error);
+        }
+      }
+    }, 300);
+
+    setHoverTimeout(timeout);
+  }
+
+  function handleMouseLeave() {
+    // Clear the hover timeout
+    if (hoverTimeout) {
+      clearTimeout(hoverTimeout);
+      setHoverTimeout(null);
+    }
+    setTooltip(null);
+  }
+
   return (
-    <pre className="syntax-rendered">
-      <code className="rich">
-        {segments.map((seg, idx) => renderSegment(seg, idx, onReferenceClick))}
-      </code>
-    </pre>
+    <>
+      <pre className="syntax-rendered">
+        <code className="rich">
+          {segments.map((seg, idx) =>
+            renderSegment(seg, idx, onReferenceClick, handleMouseEnter, handleMouseLeave)
+          )}
+        </code>
+      </pre>
+      {tooltip && (
+        <div
+          className="syntax-tooltip"
+          style={{
+            position: 'fixed',
+            left: tooltip.position.x + 10,
+            top: tooltip.position.y + 10,
+            pointerEvents: 'none'
+          }}
+        >
+          <div className="syntax-tooltip-content">{tooltip.content}</div>
+        </div>
+      )}
+    </>
   );
 }
 
-function renderSegment(segment: SourceSegment, index: number, onReferenceClick?: (name: string, type: 'term' | 'type', hash?: string) => void): JSX.Element {
+function renderSegment(
+  segment: SourceSegment,
+  index: number,
+  onReferenceClick?: (name: string, type: 'term' | 'type', hash?: string) => void,
+  onMouseEnter?: (e: React.MouseEvent, segment: SourceSegment, index: number) => void,
+  onMouseLeave?: () => void
+): JSX.Element {
   const { segment: text, annotation } = segment;
+
+  const hoverHandlers = onMouseEnter && onMouseLeave ? {
+    onMouseEnter: (e: React.MouseEvent) => onMouseEnter(e, segment, index),
+    onMouseLeave: onMouseLeave
+  } : {};
 
   if (!annotation) {
     // Plain text with no annotation
-    return <span key={index}>{text}</span>;
+    return <span key={index} {...hoverHandlers}>{text}</span>;
   }
 
   // Apply styling and interactivity based on annotation type
@@ -48,8 +168,8 @@ function renderSegment(segment: SourceSegment, index: number, onReferenceClick?:
           e.preventDefault();
           clickHandler(onReferenceClick);
         }}
-        title={getAnnotationTitle(annotation)}
         href="#"
+        {...hoverHandlers}
       >
         {text}
       </a>
@@ -57,7 +177,7 @@ function renderSegment(segment: SourceSegment, index: number, onReferenceClick?:
   }
 
   return (
-    <span key={index} className={className} title={getAnnotationTitle(annotation)}>
+    <span key={index} className={className} {...hoverHandlers}>
       {text}
     </span>
   );
@@ -139,18 +259,3 @@ function getClickHandler(
   }
 }
 
-/**
- * Get tooltip title for annotation
- */
-function getAnnotationTitle(annotation: Annotation): string | undefined {
-  switch (annotation.tag) {
-    case 'TypeReference':
-      return `Type reference: ${annotation.contents}`;
-    case 'TermReference':
-      return `Term reference: ${annotation.contents}`;
-    case 'HashQualifier':
-      return `Definition: ${annotation.contents}`;
-    default:
-      return undefined;
-  }
-}

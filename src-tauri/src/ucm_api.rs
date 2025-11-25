@@ -301,10 +301,11 @@ pub struct SearchResult {
 }
 
 // Internal struct for deserializing from UCM API
+// UCM returns flat strings: {"project": "validation", "branch": "main", "path": "."}
 #[derive(Debug, Clone, Deserialize)]
 struct CurrentContextResponse {
-    pub project: Option<ProjectResponse>,
-    pub branch: Option<BranchResponse>,
+    pub project: Option<String>,
+    pub branch: Option<String>,
     pub path: String,
 }
 
@@ -319,8 +320,14 @@ pub struct CurrentContext {
 impl From<CurrentContextResponse> for CurrentContext {
     fn from(resp: CurrentContextResponse) -> Self {
         CurrentContext {
-            project: resp.project.map(Project::from),
-            branch: resp.branch.map(Branch::from),
+            project: resp.project.map(|name| Project {
+                name,
+                active_branch: None,
+            }),
+            branch: resp.branch.map(|name| Branch {
+                name,
+                project: None,
+            }),
             path: resp.path,
         }
     }
@@ -454,6 +461,7 @@ impl UCMApiClient {
         );
 
         // UCM expects names as a query parameter (not names[])
+        // Names can be fully qualified names (e.g. "base.List.map") or hashes (e.g. "#abc123...")
         let response = self
             .client
             .get(&url)
@@ -479,11 +487,36 @@ impl UCMApiClient {
             // Clone the annotated segments for rich rendering
             let segments = term_detail.term_definition.contents.clone();
 
+            // Extract signature from the signature array
+            // The signature array contains segment objects with { segment: "...", annotation: ... }
+            let signature: Option<String> = if !term_detail.signature.is_empty() {
+                let sig_text: String = term_detail
+                    .signature
+                    .iter()
+                    .filter_map(|seg| seg.get("segment").and_then(|s| s.as_str()))
+                    .collect();
+                if sig_text.is_empty() {
+                    None
+                } else {
+                    Some(sig_text)
+                }
+            } else {
+                None
+            };
+
+            log::debug!(
+                "get_definition returning: name={}, hash={}, segments_len={}, signature={:?}",
+                term_detail.best_term_name,
+                hash,
+                segments.len(),
+                signature
+            );
+
             return Ok(Some(DefinitionSummary {
                 name: term_detail.best_term_name.clone(),
                 hash: hash.clone(),
                 def_type: "term".to_string(),
-                signature: None, // Could parse signature array if needed
+                signature,
                 source: None,
                 segments,
                 documentation: None,
@@ -544,23 +577,26 @@ impl UCMApiClient {
             .context("Failed to parse search results")?;
 
         // Convert to our simplified SearchResult format
+        // Use the full termName/typeName from namedTerm/namedType for FQN resolution
         let results: Vec<SearchResult> = raw_results
             .into_iter()
             .map(|(_score, item)| match item {
                 SearchResultItem::FoundTermResult {
-                    best_found_term_name,
+                    best_found_term_name: _,
                     named_term,
                 } => SearchResult {
-                    name: best_found_term_name,
+                    // Use term_name (FQN like "common.auth.authenticateRemote") not best_found_term_name (short name)
+                    name: named_term.term_name,
                     result_type: "term".to_string(),
                     hash: named_term.term_hash,
                 },
                 SearchResultItem::FoundTypeResult {
-                    best_found_type_name,
+                    best_found_type_name: _,
                     named_type,
                     ..
                 } => SearchResult {
-                    name: best_found_type_name,
+                    // Use type_name (FQN) not best_found_type_name (short name)
+                    name: named_type.type_name,
                     result_type: "type".to_string(),
                     hash: named_type.type_hash,
                 },

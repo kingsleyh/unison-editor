@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useUnisonStore } from '../store/unisonStore';
 import { getUCMApiClient } from '../services/ucmApi';
+import { ucmContext } from '../services/ucmContext';
 
 export function ProjectBranchSelector() {
   const {
@@ -44,6 +45,8 @@ export function ProjectBranchSelector() {
       // Auto-select first project if none selected
       if (!currentProject && projectList.length > 0) {
         setCurrentProject(projectList[0]);
+        // Set manual context for UCM providers
+        ucmContext.setManualContext(projectList[0].name, null);
       }
     } catch (err) {
       setError(`Failed to load projects: ${err}`);
@@ -65,6 +68,8 @@ export function ProjectBranchSelector() {
       // Auto-select first branch if none selected
       if (!currentBranch && branchList.length > 0) {
         setCurrentBranch(branchList[0]);
+        // Set manual context for UCM providers (with branch)
+        ucmContext.setManualContext(projectName, branchList[0].name);
       }
     } catch (err) {
       setError(`Failed to load branches: ${err}`);
@@ -78,11 +83,17 @@ export function ProjectBranchSelector() {
     const project = projects.find((p) => p.name === e.target.value);
     setCurrentProject(project || null);
     setCurrentBranch(null); // Reset branch when project changes
+
+    // Update ucmContext with manual override
+    ucmContext.setManualContext(project?.name || null, null);
   }
 
   function handleBranchChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const branch = branches.find((b) => b.name === e.target.value);
     setCurrentBranch(branch || null);
+
+    // Update ucmContext with manual override
+    ucmContext.setManualContext(currentProject?.name || null, branch?.name || null);
   }
 
   if (!isConnected) {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Editor as MonacoEditor } from '@monaco-editor/react';
 import { useUnisonStore } from '../store/unisonStore';
 import { getUCMApiClient } from '../services/ucmApi';
-import type { DefinitionSummary } from '../services/ucmApi';
+import type { DefinitionSummary } from '../types/syntax';
 
 interface DefinitionViewerProps {
   selectedDefinition: { name: string; type: 'term' | 'type' } | null;
