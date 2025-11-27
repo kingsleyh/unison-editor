@@ -1,4 +1,4 @@
-use crate::mcp_client::{MCPClient, UpdateResult};
+use crate::mcp_client::{MCPClient, RunTestsResult, TypecheckResult, UpdateResult};
 use crate::ucm_api::{
     Branch, CurrentContext, Definition, DefinitionSummary, NamespaceItem, Project, SearchResult,
     UCMApiClient,
@@ -371,6 +371,52 @@ pub fn ucm_update(
 
     // Call the update tool
     mcp_client.update_definitions(&code, &projectName, &branchName)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn ucm_typecheck(
+    code: String,
+    projectName: String,
+    branchName: String,
+    state: State<'_, AppState>,
+) -> Result<TypecheckResult, String> {
+    let mut mcp_guard = state.mcp_client.lock().unwrap();
+
+    // Spawn MCP client if not already running
+    if mcp_guard.is_none() {
+        *mcp_guard = Some(MCPClient::spawn()?);
+    }
+
+    let mcp_client = mcp_guard
+        .as_mut()
+        .ok_or("Failed to get MCP client")?;
+
+    // Call the typecheck tool
+    mcp_client.typecheck_code(&code, &projectName, &branchName)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn ucm_run_tests(
+    projectName: String,
+    branchName: String,
+    subnamespace: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<RunTestsResult, String> {
+    let mut mcp_guard = state.mcp_client.lock().unwrap();
+
+    // Spawn MCP client if not already running
+    if mcp_guard.is_none() {
+        *mcp_guard = Some(MCPClient::spawn()?);
+    }
+
+    let mcp_client = mcp_guard
+        .as_mut()
+        .ok_or("Failed to get MCP client")?;
+
+    // Call the run-tests tool
+    mcp_client.run_tests(&projectName, &branchName, subnamespace.as_deref())
 }
 
 // LSP Commands

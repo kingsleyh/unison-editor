@@ -15,6 +15,33 @@ export interface SearchResult {
   snippet?: string;
 }
 
+export interface WatchResult {
+  expression: string;
+  result: string;
+  lineNumber: number;
+}
+
+export interface TestResult {
+  name: string;
+  passed: boolean;
+  message: string;
+}
+
+export interface TypecheckResult {
+  success: boolean;
+  errors: string[];
+  watchResults: WatchResult[];
+  testResults: TestResult[];
+  output: string;
+}
+
+export interface RunTestsResult {
+  success: boolean;
+  output: string;
+  errors: string[];
+  testResults: TestResult[];
+}
+
 /**
  * Client for interacting with UCM's HTTP API via Tauri commands
  */
@@ -135,6 +162,42 @@ export class UCMApiClient {
    */
   async checkConnection(): Promise<boolean> {
     return invoke<boolean>('check_ucm_connection');
+  }
+
+  /**
+   * Typecheck code and evaluate watch expressions
+   *
+   * Watch expressions are lines starting with ">" which are evaluated
+   * and their results returned.
+   */
+  async typecheckCode(
+    projectName: string,
+    branchName: string,
+    code: string
+  ): Promise<TypecheckResult> {
+    return invoke<TypecheckResult>('ucm_typecheck', {
+      projectName,
+      branchName,
+      code,
+    });
+  }
+
+  /**
+   * Run tests from the codebase
+   *
+   * Runs tests that are already saved in the codebase.
+   * Can optionally specify a subnamespace to run tests from.
+   */
+  async runTests(
+    projectName: string,
+    branchName: string,
+    subnamespace?: string
+  ): Promise<RunTestsResult> {
+    return invoke<RunTestsResult>('ucm_run_tests', {
+      projectName,
+      branchName,
+      subnamespace,
+    });
   }
 }
 

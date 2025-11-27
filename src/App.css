@@ -2096,6 +2096,46 @@ body {
   background-color: #1177bb;
 }
 
+/* Run All Watch button - gold color */
+.codebase-action-btn.run-all-watch-btn {
+  background-color: transparent;
+  color: #dcdcaa;
+  border: 1px solid #dcdcaa;
+  font-size: 10px;
+  padding: 4px 8px;
+  letter-spacing: -1px;
+}
+
+.codebase-action-btn.run-all-watch-btn:hover:not(:disabled) {
+  background-color: rgba(220, 220, 170, 0.1);
+  color: #e8e8c0;
+}
+
+.codebase-action-btn.run-all-watch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Run All Tests button - green color */
+.codebase-action-btn.run-all-tests-btn {
+  background-color: transparent;
+  color: #4ec9b0;
+  border: 1px solid #4ec9b0;
+  font-size: 10px;
+  padding: 4px 8px;
+  letter-spacing: -1px;
+}
+
+.codebase-action-btn.run-all-tests-btn:hover:not(:disabled) {
+  background-color: rgba(78, 201, 176, 0.1);
+  color: #5fd9c4;
+}
+
+.codebase-action-btn.run-all-tests-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .codebase-action-btn.update-btn {
   background-color: transparent;
   color: #cccccc;
@@ -2362,6 +2402,83 @@ body {
 
 .run-pane-collapsed-indicator.info {
   color: #9cdcfe;
+}
+
+/* Watch expression results in Run Pane */
+.watch-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.watch-result-block {
+  padding: 10px 12px;
+  background: rgba(78, 201, 176, 0.1);
+  border-radius: 6px;
+  border-left: 3px solid #4ec9b0;
+}
+
+.watch-expression-line {
+  color: #9cdcfe;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.watch-result-value {
+  color: #4ec9b0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  padding-left: 16px;
+}
+
+/* Watch expression play button in editor gutter - gold color */
+.watch-expression-run-button {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+}
+
+.watch-expression-run-button::before {
+  content: '▶';
+  color: #dcdcaa; /* Gold/yellow for watch expressions */
+  font-size: 10px;
+  opacity: 0.6;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.watch-expression-run-button:hover::before {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+/* Test expression play button - green color */
+.test-expression-run-button {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+}
+
+.test-expression-run-button::before {
+  content: '▶';
+  color: #4ec9b0; /* Green/cyan for tests */
+  font-size: 10px;
+  opacity: 0.6;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.test-expression-run-button:hover::before {
+  opacity: 1;
+  transform: scale(1.2);
 }
 
 /* Vertical splitter collapsed state */

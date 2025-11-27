@@ -1,2 +1,9 @@
+ls
+load scratch.u
+test
+ls
+move <+> validation.<+>
+move >-> validation.>->
+ls
 view validation.README
 ls

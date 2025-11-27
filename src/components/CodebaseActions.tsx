@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useUnisonStore } from '../store/unisonStore';
 import { getDefinitionResolver } from '../services/definitionResolver';
+import { detectWatchExpressions, detectTestExpressions } from '../services/watchExpressionService';
 
 interface UpdateResult {
   success: boolean;
@@ -11,9 +12,11 @@ interface UpdateResult {
 
 interface CodebaseActionsProps {
   onSuccess?: () => void;
+  onRunAllWatchExpressions?: () => void;
+  onRunAllTestExpressions?: () => void;
 }
 
-export function CodebaseActions({ onSuccess }: CodebaseActionsProps) {
+export function CodebaseActions({ onSuccess, onRunAllWatchExpressions, onRunAllTestExpressions }: CodebaseActionsProps) {
   const {
     activeTabId,
     getActiveTab,
@@ -28,6 +31,12 @@ export function CodebaseActions({ onSuccess }: CodebaseActionsProps) {
 
   const activeTab = getActiveTab();
   const hasContent = !!activeTab?.content?.trim();
+  const hasWatchExpressions = activeTab?.content
+    ? detectWatchExpressions(activeTab.content).length > 0
+    : false;
+  const hasTestExpressions = activeTab?.content
+    ? detectTestExpressions(activeTab.content).length > 0
+    : false;
 
   async function handleSaveToCodebase() {
     if (!activeTab?.content?.trim()) {
@@ -114,6 +123,26 @@ export function CodebaseActions({ onSuccess }: CodebaseActionsProps) {
 
   return (
     <div className="codebase-actions">
+      {hasWatchExpressions && (
+        <button
+          className="codebase-action-btn run-all-watch-btn"
+          onClick={onRunAllWatchExpressions}
+          disabled={!currentProject || !currentBranch}
+          title="Run all watch expressions"
+        >
+          ▶▶
+        </button>
+      )}
+      {hasTestExpressions && (
+        <button
+          className="codebase-action-btn run-all-tests-btn"
+          onClick={onRunAllTestExpressions}
+          disabled={!currentProject || !currentBranch}
+          title="Run all tests"
+        >
+          ▶▶
+        </button>
+      )}
       <button
         className="codebase-action-btn update-btn"
         onClick={handleSaveToCodebase}

@@ -12,6 +12,7 @@ import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
 import { applyThemeVariables, loadTheme } from './theme/unisonTheme';
+import { buildSingleWatchCode, buildSingleTestCode, buildAllWatchesCode, buildAllTestsCode, getTestName, detectTestExpressions, detectWatchExpressions } from './services/watchExpressionService';
 import './App.css';
 
 function App() {
@@ -79,6 +80,354 @@ function App() {
     // Tree reveal is now handled by DefinitionStack after resolution
     // Use unique ID so each click triggers useEffect even for same definition
     setSelectedDefinition({ name, type, id: Date.now() });
+  }
+
+  /**
+   * Handle running a single watch expression from the editor gutter.
+   * Only evaluates the clicked watch expression (not all of them).
+   * @param lineNumber The line number of the watch expression
+   * @param fullCode The full editor content (for context)
+   */
+  async function handleRunWatchExpression(lineNumber: number, fullCode: string) {
+    const { currentProject, currentBranch, setRunOutput } = useUnisonStore.getState();
+
+    if (!currentProject || !currentBranch) {
+      setRunOutput({
+        type: 'error',
+        message: 'No project/branch selected. Please select a project first.',
+      });
+      return;
+    }
+
+    // Auto-expand output pane
+    setRunPaneCollapsed(false);
+
+    // Show loading state
+    setRunOutput({ type: 'info', message: 'Evaluating...' });
+
+    try {
+      // Build code with all definitions but only the clicked watch expression
+      const singleWatchCode = buildSingleWatchCode(fullCode, lineNumber);
+
+      const result = await client.typecheckCode(
+        currentProject.name,
+        currentBranch.name,
+        singleWatchCode
+      );
+
+      if (result.errors.length > 0) {
+        setRunOutput({ type: 'error', message: result.errors.join('\n') });
+      } else if (result.watchResults.length > 0) {
+        // Should only have one result since we filtered to one watch expression
+        const watchResult = result.watchResults[0];
+        setRunOutput({
+          type: 'success',
+          message: `> ${watchResult.expression}\n⇒ ${watchResult.result}`,
+        });
+      } else if (result.output && result.output.includes('⧩')) {
+        // Fallback: try to parse watch result from output string
+        // Format: "  5 | > square 4\n        ⧩\n        16"
+        const lines = result.output.split('\n');
+        let expression = '';
+        let watchResult = '';
+        let foundArrow = false;
+
+        for (const line of lines) {
+          if (line.includes(' | ') && line.includes('>')) {
+            // Extract expression: "  5 | > square 4" -> "square 4"
+            const match = line.match(/\|\s*>\s*(.+)/);
+            if (match) {
+              expression = match[1].trim();
+            }
+          } else if (line.includes('⧩')) {
+            foundArrow = true;
+          } else if (foundArrow && line.trim()) {
+            watchResult = line.trim();
+            break;
+          }
+        }
+
+        if (expression && watchResult) {
+          setRunOutput({
+            type: 'success',
+            message: `> ${expression}\n⇒ ${watchResult}`,
+          });
+        } else {
+          setRunOutput({ type: 'info', message: result.output });
+        }
+      } else {
+        // No watch results
+        setRunOutput({ type: 'info', message: result.output || 'No result' });
+      }
+    } catch (err) {
+      setRunOutput({
+        type: 'error',
+        message: `Failed to evaluate: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  /**
+   * Handle running all watch expressions in the current file.
+   * Evaluates all watch expressions and shows all results.
+   */
+  async function handleRunAllWatchExpressions() {
+    const activeTab = getActiveTab();
+    const { currentProject, currentBranch, setRunOutput } = useUnisonStore.getState();
+
+    if (!activeTab) {
+      return;
+    }
+
+    if (!currentProject || !currentBranch) {
+      setRunOutput({
+        type: 'error',
+        message: 'No project/branch selected. Please select a project first.',
+      });
+      return;
+    }
+
+    const watches = detectWatchExpressions(activeTab.content);
+    if (watches.length === 0) {
+      setRunOutput({ type: 'info', message: 'No watch expressions found' });
+      return;
+    }
+
+    // Auto-expand output pane
+    setRunPaneCollapsed(false);
+
+    // Show loading state
+    setRunOutput({ type: 'info', message: `Evaluating ${watches.length} watch expression(s)...` });
+
+    try {
+      // Build code with all watches but NO tests
+      const watchOnlyCode = buildAllWatchesCode(activeTab.content);
+
+      const result = await client.typecheckCode(
+        currentProject.name,
+        currentBranch.name,
+        watchOnlyCode
+      );
+
+      if (result.errors.length > 0) {
+        setRunOutput({ type: 'error', message: result.errors.join('\n') });
+      } else if (result.watchResults.length > 0) {
+        // Show ALL watch results
+        const output = result.watchResults
+          .map((w) => `> ${w.expression}\n⇒ ${w.result}`)
+          .join('\n\n');
+        setRunOutput({ type: 'success', message: output });
+      } else if (result.output && result.output.includes('⧩')) {
+        // Fallback: parse from output string
+        const lines = result.output.split('\n');
+        const results: Array<{expr: string, val: string}> = [];
+        let currentExpr = '';
+        let foundArrow = false;
+
+        for (const line of lines) {
+          if (line.includes(' | ') && line.includes('>')) {
+            const match = line.match(/\|\s*>\s*(.+)/);
+            if (match) {
+              currentExpr = match[1].trim();
+              foundArrow = false;
+            }
+          } else if (line.includes('⧩')) {
+            foundArrow = true;
+          } else if (foundArrow && line.trim() && currentExpr) {
+            results.push({ expr: currentExpr, val: line.trim() });
+            currentExpr = '';
+            foundArrow = false;
+          }
+        }
+
+        if (results.length > 0) {
+          const output = results
+            .map((r) => `> ${r.expr}\n⇒ ${r.val}`)
+            .join('\n\n');
+          setRunOutput({ type: 'success', message: output });
+        } else {
+          setRunOutput({ type: 'info', message: result.output });
+        }
+      } else {
+        setRunOutput({ type: 'info', message: result.output || 'No results' });
+      }
+    } catch (err) {
+      setRunOutput({
+        type: 'error',
+        message: `Failed to evaluate: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  /**
+   * Handle running a single test expression from the editor gutter.
+   * Only evaluates the clicked test expression (not all of them).
+   * @param lineNumber The line number of the test expression
+   * @param fullCode The full editor content (for context)
+   */
+  async function handleRunTestExpression(lineNumber: number, fullCode: string) {
+    const { currentProject, currentBranch, setRunOutput } = useUnisonStore.getState();
+
+    if (!currentProject || !currentBranch) {
+      setRunOutput({
+        type: 'error',
+        message: 'No project/branch selected. Please select a project first.',
+      });
+      return;
+    }
+
+    // Get the test name from the line
+    const lines = fullCode.split('\n');
+    const testLine = lines[lineNumber - 1] || '';
+    const testName = getTestName(testLine);
+
+    // Auto-expand output pane
+    setRunPaneCollapsed(false);
+
+    // Show loading state
+    setRunOutput({ type: 'info', message: `Running ${testName}...` });
+
+    try {
+      // Build code with all definitions but only the clicked test expression
+      const singleTestCode = buildSingleTestCode(fullCode, lineNumber);
+
+      const result = await client.typecheckCode(
+        currentProject.name,
+        currentBranch.name,
+        singleTestCode
+      );
+
+      if (result.errors.length > 0) {
+        setRunOutput({ type: 'error', message: result.errors.join('\n') });
+        return;
+      }
+
+      // Check for test results (parsed from typecheck output)
+      if (result.testResults && result.testResults.length > 0) {
+        const testResult = result.testResults[0];
+        if (testResult.passed) {
+          setRunOutput({
+            type: 'success',
+            message: `✅ ${testName}`,
+          });
+        } else {
+          setRunOutput({
+            type: 'error',
+            message: `🚫 ${testName}${testResult.message && testResult.message !== 'Failed' ? `\n${testResult.message}` : ''}`,
+          });
+        }
+      } else if (result.output) {
+        // Fallback to output string
+        if (result.output.includes('✅') || result.output.includes('Passed')) {
+          setRunOutput({ type: 'success', message: `✅ ${testName}` });
+        } else if (result.output.includes('🚫') || result.output.includes('FAILED')) {
+          setRunOutput({ type: 'error', message: `🚫 ${testName}\n${result.output}` });
+        } else if (result.output.includes('[Result]') && !result.output.includes('error') && !result.output.includes('Error')) {
+          // Test typechecked successfully (shows [Result] type) - assume passed
+          setRunOutput({ type: 'success', message: `✅ ${testName}` });
+        } else {
+          setRunOutput({ type: 'info', message: result.output || 'Test completed' });
+        }
+      } else {
+        setRunOutput({ type: 'info', message: 'Test completed' });
+      }
+    } catch (err) {
+      setRunOutput({
+        type: 'error',
+        message: `Failed to run test: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  /**
+   * Handle running all test expressions in the current file.
+   */
+  async function handleRunAllTestExpressions() {
+    const activeTab = getActiveTab();
+    const { currentProject, currentBranch, setRunOutput } = useUnisonStore.getState();
+
+    if (!activeTab) {
+      return;
+    }
+
+    if (!currentProject || !currentBranch) {
+      setRunOutput({
+        type: 'error',
+        message: 'No project/branch selected. Please select a project first.',
+      });
+      return;
+    }
+
+    const tests = detectTestExpressions(activeTab.content);
+    if (tests.length === 0) {
+      setRunOutput({ type: 'info', message: 'No test expressions found' });
+      return;
+    }
+
+    // Auto-expand output pane
+    setRunPaneCollapsed(false);
+
+    // Show loading state
+    setRunOutput({ type: 'info', message: `Running ${tests.length} test(s)...` });
+
+    try {
+      // Build code with all tests but NO watch expressions
+      const testOnlyCode = buildAllTestsCode(activeTab.content);
+
+      const result = await client.typecheckCode(
+        currentProject.name,
+        currentBranch.name,
+        testOnlyCode
+      );
+
+      if (result.errors.length > 0) {
+        setRunOutput({ type: 'error', message: result.errors.join('\n') });
+        return;
+      }
+
+      // Check if testResults has real individual test names
+      const hasRealTestResults = result.testResults &&
+        result.testResults.length > 0 &&
+        !result.testResults.every(t => t.name === 'Passed' || t.name === 'test' || t.name === '_pending_');
+
+      if (hasRealTestResults) {
+        // UCM returned individual test results with names
+        const passed = result.testResults.filter(t => t.passed).length;
+        const failed = result.testResults.filter(t => !t.passed).length;
+
+        const output = result.testResults
+          .map((t) => `${t.passed ? '✅' : '🚫'} ${t.name}`)
+          .join('\n');
+
+        setRunOutput({
+          type: failed > 0 ? 'error' : 'success',
+          message: `${passed} passed, ${failed} failed\n\n${output}`,
+        });
+      } else {
+        // Fallback: check output for failures
+        const hasFailures = result.output.includes('🚫');
+
+        if (!hasFailures) {
+          // All tests passed - show each detected test name as passed
+          const output = tests.map((t) => `✅ ${t.name}`).join('\n');
+          setRunOutput({
+            type: 'success',
+            message: `${tests.length} passed, 0 failed\n\n${output}`,
+          });
+        } else {
+          // There are failures - show the raw output so user can see what failed
+          setRunOutput({
+            type: 'error',
+            message: result.output || 'Some tests failed',
+          });
+        }
+      }
+    } catch (err) {
+      setRunOutput({
+        type: 'error',
+        message: `Failed to run tests: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
   }
 
   /**
@@ -301,7 +650,7 @@ function App() {
                         onTabClick={setActiveTab}
                         onTabClose={removeTab}
                       />
-                      <CodebaseActions />
+                      <CodebaseActions onRunAllWatchExpressions={handleRunAllWatchExpressions} onRunAllTestExpressions={handleRunAllTestExpressions} />
                     </div>
 
                     <VerticalResizableSplitter
@@ -320,6 +669,8 @@ function App() {
                               language={activeTab.language}
                               filePath={activeTab.filePath}
                               onDefinitionClick={handleOpenDefinition}
+                              onRunWatchExpression={handleRunWatchExpression}
+                              onRunTestExpression={handleRunTestExpression}
                             />
                           ) : (
                             <div className="no-editor">

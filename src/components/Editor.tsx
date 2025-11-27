@@ -5,6 +5,12 @@ import { registerUnisonLanguage } from '../editor/unisonLanguage';
 import { getMonacoLspClient } from '../services/monacoLspClient';
 import { registerUCMProviders, setOnDefinitionClick, setMonacoEditor, triggerDefinitionClick } from '../services/monacoUcmProviders';
 import { ucmContext } from '../services/ucmContext';
+import {
+  detectWatchExpressions,
+  isWatchExpressionLine,
+  detectTestExpressions,
+  isTestExpressionLine,
+} from '../services/watchExpressionService';
 
 interface EditorProps {
   value: string;
@@ -13,6 +19,8 @@ interface EditorProps {
   readOnly?: boolean;
   filePath?: string;
   onDefinitionClick?: (name: string, type: 'term' | 'type') => void;
+  onRunWatchExpression?: (lineNumber: number, fullCode: string) => void;
+  onRunTestExpression?: (lineNumber: number, fullCode: string) => void;
 }
 
 /**
@@ -29,12 +37,24 @@ export function Editor({
   readOnly = false,
   filePath,
   onDefinitionClick,
+  onRunWatchExpression,
+  onRunTestExpression,
 }: EditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
   const documentUriRef = useRef<string | null>(null);
+  const watchDecorationsRef = useRef<string[]>([]);
+  const testDecorationsRef = useRef<string[]>([]);
 
   const lspClient = getMonacoLspClient();
+
+  // Store onRunWatchExpression in a ref so we can use it in event handlers
+  const onRunWatchExpressionRef = useRef(onRunWatchExpression);
+  onRunWatchExpressionRef.current = onRunWatchExpression;
+
+  // Store onRunTestExpression in a ref so we can use it in event handlers
+  const onRunTestExpressionRef = useRef(onRunTestExpression);
+  onRunTestExpressionRef.current = onRunTestExpression;
 
   // Initialize UCM context (once per app)
   useEffect(() => {
@@ -114,6 +134,32 @@ export function Editor({
     // Listen for cmd+click to trigger definition panel
     // Monaco shows link preview on cmd+hover, but we only want to open panel on actual click
     editor.onMouseDown((e) => {
+      // Check if click is on glyph margin (watch/test expression run button)
+      if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        const lineNumber = e.target.position?.lineNumber;
+        if (lineNumber) {
+          const model = editor.getModel();
+          if (model) {
+            const lineContent = model.getLineContent(lineNumber);
+            if (isWatchExpressionLine(lineContent)) {
+              // Run this watch expression
+              console.log('[Editor] Watch expression run button clicked, line:', lineNumber);
+              // Pass the full code so UCM has context
+              if (onRunWatchExpressionRef.current) {
+                onRunWatchExpressionRef.current(lineNumber, model.getValue());
+              }
+            } else if (isTestExpressionLine(lineContent)) {
+              // Run this test expression
+              console.log('[Editor] Test expression run button clicked, line:', lineNumber);
+              if (onRunTestExpressionRef.current) {
+                onRunTestExpressionRef.current(lineNumber, model.getValue());
+              }
+            }
+          }
+        }
+        return; // Don't process further for gutter clicks
+      }
+
       // Check if cmd/ctrl key is held and it's a left click on a link (definition)
       if (e.event.metaKey || e.event.ctrlKey) {
         // Check if clicking on a word (potential definition link)
@@ -123,6 +169,54 @@ export function Editor({
           triggerDefinitionClick();
         }
       }
+    });
+
+    // Update watch and test expression decorations on content change
+    const updateDecorations = () => {
+      const model = editor.getModel();
+      if (!model) return;
+
+      const content = model.getValue();
+      const watchExpressions = detectWatchExpressions(content);
+      const testExpressions = detectTestExpressions(content);
+
+      // Create decorations for each watch expression line
+      const watchDecorations = watchExpressions.map((watch) => ({
+        range: new monaco.Range(watch.lineNumber, 1, watch.lineNumber, 1),
+        options: {
+          glyphMarginClassName: 'watch-expression-run-button',
+          glyphMarginHoverMessage: { value: 'Run expression (click to evaluate)' },
+        },
+      }));
+
+      // Create decorations for each test expression line
+      const testDecorations = testExpressions.map((test) => ({
+        range: new monaco.Range(test.lineNumber, 1, test.lineNumber, 1),
+        options: {
+          glyphMarginClassName: 'test-expression-run-button',
+          glyphMarginHoverMessage: { value: `Run test: ${test.name}` },
+        },
+      }));
+
+      // Apply watch decorations
+      watchDecorationsRef.current = editor.deltaDecorations(
+        watchDecorationsRef.current,
+        watchDecorations
+      );
+
+      // Apply test decorations
+      testDecorationsRef.current = editor.deltaDecorations(
+        testDecorationsRef.current,
+        testDecorations
+      );
+    };
+
+    // Update decorations initially
+    updateDecorations();
+
+    // Update decorations when content changes
+    editor.onDidChangeModelContent(() => {
+      updateDecorations();
     });
 
     // Send textDocument/didOpen notification to LSP server for diagnostics
@@ -173,6 +267,8 @@ export function Editor({
           automaticLayout: true,
           tabSize: 2,
           insertSpaces: true,
+          // Enable glyph margin for watch expression run buttons
+          glyphMargin: true,
           // Disable automatic occurrence highlighting on click (too noisy)
           // User can still use Cmd+Shift+L to select all occurrences
           occurrencesHighlight: 'off',

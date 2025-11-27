@@ -54,6 +54,8 @@ pub fn run() {
       commands::rename_file,
       commands::file_exists,
       commands::ucm_update,
+      commands::ucm_typecheck,
+      commands::ucm_run_tests,
       commands::lsp_connect,
       commands::lsp_disconnect,
       commands::lsp_send_request,
