@@ -2,16 +2,29 @@ import { useState, useEffect, useRef } from 'react';
 import { DefinitionCard } from './DefinitionCard';
 import { getUCMApiClient } from '../services/ucmApi';
 import { useUnisonStore } from '../store/unisonStore';
+import { getDefinitionResolver } from '../services/definitionResolver';
 import type { DefinitionSummary } from '../types/syntax';
+import type { ResolvedDefinition } from '../types/navigation';
+import { isHash, normalizeHash } from '../types/navigation';
 
 interface DefinitionStackProps {
   selectedDefinition: { name: string; type: 'term' | 'type' } | null;
   onAddToScratch: (source: string, name: string) => void;
+  /** Called when a definition is loaded/selected (to reveal in tree) */
+  onRevealInTree?: (fqn: string, type: 'term' | 'type') => void;
 }
 
 interface DefinitionCardState {
   id: string;
-  fqn: string; // Store the FQN used to look up this definition
+  /** The identifier we're looking up (could be hash or FQN initially) */
+  pendingIdentifier: string;
+  /** Canonical hash - primary key for deduplication (null until resolved) */
+  hash: string | null;
+  /** Fully qualified name - for display and tree navigation (null until resolved) */
+  fqn: string | null;
+  /** Full resolution info from DefinitionResolver */
+  resolved: ResolvedDefinition | null;
+  /** The loaded definition */
   definition: DefinitionSummary | null;
   loading: boolean;
   error: string | null;
@@ -20,16 +33,70 @@ interface DefinitionCardState {
 /**
  * UCM Desktop-style stacked definition cards
  * Clicking nav items adds cards to the top of the list
+ *
+ * Core principle: Hash is the canonical ID for deduplication,
+ * FQN is used for display and tree navigation.
  */
 export function DefinitionStack({
   selectedDefinition,
   onAddToScratch,
+  onRevealInTree,
 }: DefinitionStackProps) {
   const { currentProject, currentBranch } = useUnisonStore();
   const [cards, setCards] = useState<DefinitionCardState[]>([]);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const client = getUCMApiClient();
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const resolver = getDefinitionResolver();
+
+  // Keep a ref to cards for use in async functions to avoid stale closures
+  const cardsRef = useRef<DefinitionCardState[]>(cards);
+  cardsRef.current = cards;
+
+  /**
+   * Find an existing card by identifier (hash or FQN).
+   * Uses the resolver cache for hash-based deduplication.
+   * Uses cardsRef to get fresh state in async contexts.
+   */
+  function findExistingCard(identifier: string): DefinitionCardState | null {
+    const currentCards = cardsRef.current;
+
+    // First check the resolver cache for this identifier
+    const cached = resolver.getCached(identifier);
+
+    if (cached) {
+      // We have a cached resolution - find card by canonical hash
+      const byHash = currentCards.find(c => c.hash === cached.hash);
+      if (byHash) return byHash;
+    }
+
+    // Fall back to direct comparison
+    if (isHash(identifier)) {
+      const normalizedHash = normalizeHash(identifier);
+      return currentCards.find(c =>
+        c.hash === normalizedHash ||
+        c.pendingIdentifier === identifier
+      ) || null;
+    } else {
+      // FQN lookup
+      return currentCards.find(c =>
+        c.fqn === identifier ||
+        c.resolved?.fqn === identifier ||
+        c.pendingIdentifier === identifier
+      ) || null;
+    }
+  }
+
+  /**
+   * Select a card and scroll to it.
+   */
+  function selectAndScrollToCard(cardId: string) {
+    setSelectedCardId(cardId);
+    setTimeout(() => {
+      const cardElement = cardRefs.current.get(cardId);
+      cardElement?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 0);
+  }
 
   // When a new definition is selected, add it to the stack or select existing
   useEffect(() => {
@@ -37,28 +104,50 @@ export function DefinitionStack({
       return;
     }
 
-    // Check if this definition is already in the stack (compare by FQN)
-    const existing = cards.find(
-      (card) =>
-        card.fqn === selectedDefinition.name &&
-        (card.definition?.type === selectedDefinition.type || card.loading)
-    );
+    // Enable tree reveal for all navigation (editor clicks, tree clicks)
+    handleNavigation(selectedDefinition.name, selectedDefinition.type, true);
+  }, [selectedDefinition]);
 
+  /**
+   * Unified navigation handler - resolves identifier and loads definition.
+   * This is the single entry point for all navigation (editor clicks, reference clicks, tree clicks).
+   *
+   * @param identifier - Hash (e.g., "#abc123") or FQN (e.g., "List.map")
+   * @param typeHint - Type hint from source
+   * @param shouldRevealInTree - Whether to reveal in tree after loading
+   */
+  async function handleNavigation(
+    identifier: string,
+    typeHint: 'term' | 'type',
+    shouldRevealInTree: boolean = true
+  ) {
+    if (!currentProject || !currentBranch) return;
+
+    console.log('[DefinitionStack] Navigation request:', {
+      identifier,
+      typeHint,
+      shouldRevealInTree,
+    });
+
+    // Check for existing card first
+    const existing = findExistingCard(identifier);
     if (existing) {
-      // Select the existing card and scroll to it
-      setSelectedCardId(existing.id);
-      // Scroll to the card
-      setTimeout(() => {
-        const cardElement = cardRefs.current.get(existing.id);
-        cardElement?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 0);
+      console.log('[DefinitionStack] Found existing card:', existing.id);
+      selectAndScrollToCard(existing.id);
+      // If we have resolved info, reveal in tree
+      if (shouldRevealInTree && existing.fqn) {
+        onRevealInTree?.(existing.fqn, existing.resolved?.type || typeHint);
+      }
       return;
     }
 
-    // Create new card with loading state
+    // Create new loading card
     const newCard: DefinitionCardState = {
-      id: `${selectedDefinition.type}-${selectedDefinition.name}-${Date.now()}`,
-      fqn: selectedDefinition.name,
+      id: `${typeHint}-${identifier}-${Date.now()}`,
+      pendingIdentifier: identifier,
+      hash: null,
+      fqn: null,
+      resolved: null,
       definition: null,
       loading: true,
       error: null,
@@ -68,33 +157,21 @@ export function DefinitionStack({
     setCards((prev) => [newCard, ...prev]);
     setSelectedCardId(newCard.id);
 
-    // Load definition
-    loadDefinition(newCard.id, selectedDefinition.name);
-  }, [selectedDefinition]);
-
-  async function loadDefinition(cardId: string, name: string) {
-    if (!currentProject || !currentBranch) return;
-
-    console.log('Loading definition:', {
-      name,
-      project: currentProject.name,
-      branch: currentBranch.name
-    });
+    console.log('[DefinitionStack] Created loading card:', newCard.id);
 
     try {
-      const definition = await client.getDefinition(
+      // Resolve the identifier using DefinitionResolver
+      const resolved = await resolver.resolve(
+        identifier,
         currentProject.name,
-        currentBranch.name,
-        name
+        currentBranch.name
       );
 
-      console.log('Definition result:', definition);
-
-      if (!definition) {
-        console.log('Definition not found for:', name);
+      if (!resolved) {
+        console.log('[DefinitionStack] Resolution failed for:', identifier);
         setCards((prev) =>
           prev.map((card) =>
-            card.id === cardId
+            card.id === newCard.id
               ? { ...card, loading: false, error: 'Definition not found' }
               : card
           )
@@ -102,18 +179,81 @@ export function DefinitionStack({
         return;
       }
 
+      console.log('[DefinitionStack] Resolved:', resolved);
+
+      // Check if another card was created for the same hash while we were loading
+      // (race condition when rapidly clicking) - use setCards callback to get fresh state
+      let duplicateFound = false;
+      let duplicateId: string | null = null;
+
+      setCards((prev) => {
+        const duplicate = prev.find(
+          (c) => c.id !== newCard.id && c.hash === resolved.hash
+        );
+        if (duplicate) {
+          duplicateFound = true;
+          duplicateId = duplicate.id;
+          // Remove the new card since we have a duplicate
+          return prev.filter((c) => c.id !== newCard.id);
+        }
+        return prev;
+      });
+
+      if (duplicateFound && duplicateId) {
+        console.log('[DefinitionStack] Found duplicate, removed new card');
+        selectAndScrollToCard(duplicateId);
+        if (shouldRevealInTree) {
+          onRevealInTree?.(resolved.fqn, resolved.type);
+        }
+        return;
+      }
+
+      // Load full definition using the resolved hash
+      const definition = await client.getDefinition(
+        currentProject.name,
+        currentBranch.name,
+        resolved.hash
+      );
+
+      if (!definition) {
+        console.log('[DefinitionStack] Failed to load definition for hash:', resolved.hash);
+        setCards((prev) =>
+          prev.map((card) =>
+            card.id === newCard.id
+              ? { ...card, loading: false, error: 'Failed to load definition' }
+              : card
+          )
+        );
+        return;
+      }
+
+      // Update card with all resolved info
       setCards((prev) =>
         prev.map((card) =>
-          card.id === cardId
-            ? { ...card, loading: false, definition }
+          card.id === newCard.id
+            ? {
+                ...card,
+                hash: resolved.hash,
+                fqn: resolved.fqn,
+                resolved,
+                definition,
+                loading: false,
+              }
             : card
         )
       );
+
+      console.log('[DefinitionStack] Card loaded successfully:', resolved.fqn);
+
+      // Reveal in tree with FQN (never hash)
+      if (shouldRevealInTree) {
+        onRevealInTree?.(resolved.fqn, resolved.type);
+      }
     } catch (err) {
-      console.error('Failed to load definition:', err);
+      console.error('[DefinitionStack] Navigation error:', err);
       setCards((prev) =>
         prev.map((card) =>
-          card.id === cardId
+          card.id === newCard.id
             ? {
                 ...card,
                 loading: false,
@@ -129,41 +269,28 @@ export function DefinitionStack({
     setCards((prev) => prev.filter((card) => card.id !== cardId));
   }
 
+  /**
+   * Handle reference click from within a definition card.
+   * Uses the unified navigation handler with tree reveal enabled.
+   */
   function handleReferenceClick(name: string, type: 'term' | 'type') {
-    // When clicking a reference in a card, add that definition to the stack
-    if (!currentProject || !currentBranch) return;
-
-    // Check if already in stack (compare by FQN)
-    const existing = cards.find(
-      (card) => card.fqn === name && (card.definition?.type === type || card.loading)
-    );
-
-    if (existing) {
-      // Select the existing card and scroll to it
-      setSelectedCardId(existing.id);
-      setTimeout(() => {
-        const cardElement = cardRefs.current.get(existing.id);
-        cardElement?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 0);
-      return;
-    }
-
-    // Create and load new card
-    const newCard: DefinitionCardState = {
-      id: `${type}-${name}-${Date.now()}`,
-      fqn: name,
-      definition: null,
-      loading: true,
-      error: null,
-    };
-
-    setCards((prev) => [newCard, ...prev]);
-    setSelectedCardId(newCard.id);
-    loadDefinition(newCard.id, name);
+    // When clicking a reference in a card, navigate to that definition
+    // Always reveal in tree since this is user-initiated navigation
+    handleNavigation(name, type, true);
   }
 
+  /**
+   * Handle card selection click.
+   * Selects the card and reveals in tree if we have the FQN.
+   */
   function handleCardClick(cardId: string) {
     setSelectedCardId(cardId);
+
+    // Find the card and notify parent to reveal in tree
+    const card = cardsRef.current.find((c) => c.id === cardId);
+    if (card && card.fqn && card.resolved) {
+      onRevealInTree?.(card.fqn, card.resolved.type);
+    }
   }
 
   if (cards.length === 0) {
@@ -183,6 +310,9 @@ export function DefinitionStack({
         {cards.map((card) => {
           const isSelected = card.id === selectedCardId;
 
+          // Display name: prefer FQN, fall back to pending identifier
+          const displayName = card.fqn || card.pendingIdentifier;
+
           if (card.loading) {
             return (
               <div
@@ -195,7 +325,7 @@ export function DefinitionStack({
                 onClick={() => handleCardClick(card.id)}
               >
                 <div className="definition-card-header">
-                  <span className="definition-name">{card.fqn}</span>
+                  <span className="definition-name">{displayName}</span>
                 </div>
                 <div className="loading">
                   <span className="loading-spinner"></span>
@@ -217,7 +347,7 @@ export function DefinitionStack({
                 onClick={() => handleCardClick(card.id)}
               >
                 <div className="definition-card-header">
-                  <span className="definition-name">{card.fqn}</span>
+                  <span className="definition-name">{displayName}</span>
                   <button
                     className="definition-card-btn close-btn"
                     onClick={(e) => {
@@ -247,6 +377,7 @@ export function DefinitionStack({
                 else cardRefs.current.delete(card.id);
               }}
               definition={card.definition}
+              resolved={card.resolved}
               isSelected={isSelected}
               onAddToScratch={onAddToScratch}
               onClose={() => handleCloseCard(card.id)}

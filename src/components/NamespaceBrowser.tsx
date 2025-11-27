@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useUnisonStore } from '../store/unisonStore';
 import { getUCMApiClient } from '../services/ucmApi';
 import type { NamespaceItem } from '../services/ucmApi';
 
 interface NamespaceBrowserProps {
   onOpenDefinition: (name: string, type: 'term' | 'type') => void;
+  /** FQN path to reveal and highlight in the tree */
+  revealPath?: string | null;
 }
 
 interface TreeNode {
@@ -17,22 +19,49 @@ interface TreeNode {
   isLoaded?: boolean;
 }
 
-export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
-  const { currentProject, currentBranch } = useUnisonStore();
+/**
+ * Generate a unique key for a tree node (path + type to handle term/type with same name)
+ */
+function getNodeKey(node: TreeNode): string {
+  return `${node.type}:${node.fullPath}`;
+}
+
+/**
+ * Deep clone a tree node and its children
+ */
+function cloneTreeNode(node: TreeNode): TreeNode {
+  return {
+    ...node,
+    children: node.children ? node.children.map(cloneTreeNode) : undefined,
+  };
+}
+
+/**
+ * Deep clone an array of tree nodes
+ */
+function cloneTreeNodes(nodes: TreeNode[]): TreeNode[] {
+  return nodes.map(cloneTreeNode);
+}
+
+export function NamespaceBrowser({ onOpenDefinition, revealPath }: NamespaceBrowserProps) {
+  const { currentProject, currentBranch, namespaceVersion } = useUnisonStore();
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<NamespaceItem[]>([]);
+  const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const highlightedRef = useRef<HTMLDivElement>(null);
 
   const client = getUCMApiClient();
 
-  // Load root namespace when project/branch changes
+  // Load root namespace when project/branch changes or when refreshNamespace is triggered
   useEffect(() => {
     if (currentProject && currentBranch) {
       loadRootNamespace();
     }
-  }, [currentProject, currentBranch]);
+  }, [currentProject, currentBranch, namespaceVersion]);
 
   // Debounced search when query changes
   useEffect(() => {
@@ -49,6 +78,168 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery, currentProject, currentBranch]);
+
+  // Reveal and highlight a path when revealPath changes
+  useEffect(() => {
+    if (!revealPath || !currentProject || !currentBranch) {
+      setHighlightedPath(null);
+      return;
+    }
+
+    // Strip timestamp suffix if present (e.g., "base.List.map|123456" -> "base.List.map")
+    // Using '|' as delimiter to avoid confusion with hash '#'
+    const actualPath = revealPath.includes('|')
+      ? revealPath.substring(0, revealPath.lastIndexOf('|'))
+      : revealPath;
+
+    // Clear search query to show tree view
+    setSearchQuery('');
+
+    // Expand path and highlight
+    revealAndHighlightPath(actualPath);
+  }, [revealPath, currentProject, currentBranch]);
+
+  // Scroll to highlighted item when it changes
+  useEffect(() => {
+    if (highlightedPath && highlightedRef.current) {
+      highlightedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [highlightedPath]);
+
+  /**
+   * Expand the tree to reveal a path and highlight the target item
+   * e.g., "base.List.map" expands "base" and "base.List", then highlights "base.List.map"
+   *
+   * IMPORTANT: This function only accepts FQN paths, not hashes.
+   * The DefinitionResolver should always provide FQN after resolution.
+   *
+   * Note: In Unison, terms can have dots in their names (e.g., "Route.respond.ok.json" is a single term).
+   * We handle this by trying to expand as many namespaces as possible, then searching for
+   * compound term names in the deepest expanded namespace.
+   */
+  async function revealAndHighlightPath(fqn: string) {
+    // Guard: Cannot reveal hashes - need FQN for tree navigation
+    if (fqn.startsWith('#')) {
+      console.error('[NamespaceBrowser] Cannot reveal hash, need FQN:', fqn);
+      return;
+    }
+
+    const parts = fqn.split('.');
+    // Deep clone to avoid mutating existing state
+    let newNodes = cloneTreeNodes(rootNodes);
+    let lastExpandedPath = '';
+    let stoppedAtIndex = -1;
+
+    // Navigate and expand each namespace in the path
+    // We try to expand as many as possible, stopping when we can't find a namespace
+    for (let i = 0; i < parts.length - 1; i++) {
+      const partialPath = parts.slice(0, i + 1).join('.');
+      const node = findNodeByPath(newNodes, partialPath);
+
+      if (!node) {
+        // Node not found - this might mean the remaining parts are the term name
+        console.log(`[NamespaceBrowser] Could not find namespace "${partialPath}", stopping expansion at index ${i}`);
+        stoppedAtIndex = i;
+        break;
+      }
+
+      if (node.type === 'namespace') {
+        // Expand this namespace if not already
+        if (!node.isExpanded) {
+          node.isExpanded = true;
+          if (!node.isLoaded) {
+            try {
+              node.children = await loadChildren(node);
+              node.isLoaded = true;
+            } catch (err) {
+              console.error('Error expanding namespace:', err);
+              stoppedAtIndex = i;
+              break;
+            }
+          }
+        }
+        lastExpandedPath = partialPath;
+      } else {
+        // Found a non-namespace node (term/type) before reaching the end
+        // The full FQN might be a compound term name starting from the previous namespace
+        console.log(`[NamespaceBrowser] Found non-namespace at "${partialPath}", stopping at index ${i}`);
+        stoppedAtIndex = i;
+        break;
+      }
+    }
+
+    // Try to find the exact target node
+    let targetNode = findNodeByPath(newNodes, fqn);
+
+    // If exact match not found, try to find the term in the tree
+    // Unison has several patterns:
+    // 1. Simple term: "ns.foo" -> term "foo" in namespace "ns"
+    // 2. Type accessor: "ns.Type.method" -> term "Type.method" in namespace "ns" OR type "Type" in "ns"
+    // 3. Nested: "ns.Type.Nested.method" -> various possibilities
+    if (!targetNode && lastExpandedPath) {
+      const parentNode = findNodeByPath(newNodes, lastExpandedPath);
+      if (parentNode?.children) {
+        const lastExpandedParts = lastExpandedPath.split('.').length;
+        const remainingParts = parts.slice(lastExpandedParts);
+        const termName = remainingParts.join('.');
+
+        // Strategy 1: Look for exact compound term name (e.g., "Either.mapRight")
+        targetNode = parentNode.children.find((child) => child.name === termName);
+
+        // Strategy 2: Look for a type/term with the first part of the name (e.g., "Either")
+        // This handles cases where "Either.mapRight" means type "Either" in the tree
+        if (!targetNode && remainingParts.length > 0) {
+          const firstPart = remainingParts[0];
+          targetNode = parentNode.children.find((child) => child.name === firstPart);
+        }
+
+        // Strategy 3: Look for terms that start with the type name followed by a dot
+        // This handles "Type.method" style accessor terms stored as compound names
+        if (!targetNode && remainingParts.length > 1) {
+          const prefix = remainingParts[0] + '.';
+          const matchingChildren = parentNode.children.filter((child) =>
+            child.name.startsWith(prefix)
+          );
+          if (matchingChildren.length > 0) {
+            // Try to find exact match among compound names
+            targetNode = matchingChildren.find((child) => child.name === termName);
+            if (!targetNode) {
+              // Fall back to the type itself if we found related terms
+              targetNode = parentNode.children.find((child) => child.name === remainingParts[0]);
+            }
+          }
+        }
+      }
+    }
+
+    setRootNodes(newNodes);
+
+    // Highlight whatever we could find, or the FQN for visual feedback
+    const highlightPath = targetNode?.fullPath || fqn;
+    setHighlightedPath(highlightPath);
+    setSelectedPath(highlightPath);
+
+    // Clear the animated highlight after 3 seconds, but keep selected
+    setTimeout(() => {
+      setHighlightedPath((current) => (current === highlightPath ? null : current));
+    }, 3000);
+  }
+
+  /**
+   * Find a node by its full path in the tree
+   */
+  function findNodeByPath(nodes: TreeNode[], path: string): TreeNode | null {
+    for (const node of nodes) {
+      if (node.fullPath === path) {
+        return node;
+      }
+      if (node.children) {
+        const found = findNodeByPath(node.children, path);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
 
   async function loadRootNamespace() {
     if (!currentProject || !currentBranch) return;
@@ -101,15 +292,16 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
     }));
   }
 
-  async function toggleNode(nodePath: string[]) {
-    const newRootNodes = [...rootNodes];
+  async function toggleNode(nodePath: number[]) {
+    // Deep clone to avoid mutating existing state
+    const newRootNodes = cloneTreeNodes(rootNodes);
 
     // Navigate to the node using the path
     let nodes = newRootNodes;
     let targetNode: TreeNode | undefined;
 
     for (let i = 0; i < nodePath.length; i++) {
-      const index = parseInt(nodePath[i]);
+      const index = nodePath[i];
       targetNode = nodes[index];
 
       if (i < nodePath.length - 1 && targetNode.children) {
@@ -191,14 +383,18 @@ export function NamespaceBrowser({ onOpenDefinition }: NamespaceBrowserProps) {
     }
   }
 
-  function renderTreeNode(node: TreeNode, path: number[], depth: number = 0): JSX.Element {
+  function renderTreeNode(node: TreeNode, path: number[], depth: number = 0): React.ReactElement {
     const nodePath = [...path];
     const hasChildren = node.type === 'namespace';
+    const isHighlighted = node.fullPath === highlightedPath;
+    const isSelected = node.fullPath === selectedPath;
+    const nodeKey = getNodeKey(node);
 
     return (
-      <div key={node.fullPath}>
+      <div key={nodeKey}>
         <div
-          className="namespace-item"
+          ref={isHighlighted ? highlightedRef : undefined}
+          className={`namespace-item ${isHighlighted ? 'highlighted' : ''} ${isSelected ? 'selected' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={() => {
             if (hasChildren) {

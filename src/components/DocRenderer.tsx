@@ -1,6 +1,7 @@
 import React from 'react';
 import { InlineSyntaxSegments } from './SyntaxRenderer';
 import type { SourceSegment } from '../types/syntax';
+import { HighlightedCode } from '../utils/unisonHighlighter';
 
 interface DocRendererProps {
   doc: any; // Doc AST from UCM
@@ -57,11 +58,23 @@ function renderDoc(
 
     case 'CodeBlock': {
       const [lang, code] = contents;
+      // Extract plain text from the code doc structure
+      const codeText = extractPlainText(code);
+      const isUnison = lang?.toLowerCase() === 'unison' || !lang;
+
       return (
-        <div className={`rich source code ${lang?.toLowerCase() || ''}`}>
-          <pre>
-            <code>{renderDoc(code, sectionLevel, onReferenceClick)}</code>
-          </pre>
+        <div className="copyable-source">
+          <div className={`rich source code ${lang?.toLowerCase() || 'unison'}`}>
+            <pre>
+              <code>
+                {isUnison && codeText ? (
+                  <HighlightedCode code={codeText} />
+                ) : (
+                  renderDoc(code, sectionLevel, onReferenceClick)
+                )}
+              </code>
+            </pre>
+          </div>
         </div>
       );
     }
@@ -155,17 +168,22 @@ function renderDoc(
     }
 
     case 'Section': {
-      if (!Array.isArray(contents)) return null;
+      if (!Array.isArray(contents)) {
+        return null;
+      }
       const [title, items] = contents;
       const level = Math.min(6, sectionLevel);
-      const HeadingTag = `h${level}` as keyof JSX.IntrinsicElements;
+      const HeadingTag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+
+      // Items might be a single item or an array
+      const itemsArray = Array.isArray(items) ? items : [items];
 
       return (
         <section>
           <HeadingTag id={docToString(title, '-')}>
             {renderDoc(title, sectionLevel, onReferenceClick)}
           </HeadingTag>
-          {items.map((item: any, idx: number) => {
+          {itemsArray.map((item: any, idx: number) => {
             // Wrap Span in paragraph for section content
             if (item?.tag === 'Span' || item?.tag === 'Paragraph') {
               return <p key={idx}>{renderDoc(item, sectionLevel + 1, onReferenceClick)}</p>;
@@ -339,4 +357,45 @@ function docToString(doc: any, separator: string): string {
   }
 
   return '';
+}
+
+/**
+ * Extract plain text from Doc structure, preserving whitespace
+ * Used for code blocks where we need exact text
+ */
+function extractPlainText(doc: any): string {
+  if (!doc || typeof doc !== 'object') {
+    return typeof doc === 'string' ? doc : '';
+  }
+
+  const { tag, contents } = doc;
+
+  switch (tag) {
+    case 'Word':
+      return contents || '';
+
+    case 'Linebreak':
+      return '\n';
+
+    case 'Blankline':
+      return '\n\n';
+
+    case 'Join':
+    case 'Span':
+    case 'Paragraph':
+    case 'Group':
+      if (Array.isArray(contents)) {
+        return contents.map(extractPlainText).join(' ');
+      }
+      return extractPlainText(contents);
+
+    default:
+      if (Array.isArray(contents)) {
+        return contents.map(extractPlainText).join('');
+      }
+      if (contents) {
+        return extractPlainText(contents);
+      }
+      return '';
+  }
 }

@@ -1,120 +1,102 @@
 import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useUnisonStore } from '../store/unisonStore';
-import { ConnectionStatus } from './ConnectionStatus';
 
-interface CodebaseActionsProps {
-  onAdd?: () => void;
-  onUpdate?: () => void;
+interface UpdateResult {
+  success: boolean;
+  output: string;
+  errors: string[];
 }
 
-export function CodebaseActions({ onAdd, onUpdate }: CodebaseActionsProps) {
-  const { activeTabId, getActiveTab } = useUnisonStore();
-  const [isAdding, setIsAdding] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [message, setMessage] = useState<{
-    type: 'success' | 'error' | 'info';
-    text: string;
-  } | null>(null);
+interface CodebaseActionsProps {
+  onSuccess?: () => void;
+}
+
+export function CodebaseActions({ onSuccess }: CodebaseActionsProps) {
+  const {
+    activeTabId,
+    getActiveTab,
+    currentProject,
+    currentBranch,
+    refreshNamespace,
+    setRunOutput,
+    setRunPaneCollapsed,
+  } = useUnisonStore();
+  const [isSaving, setIsSaving] = useState(false);
 
   const activeTab = getActiveTab();
-  const hasUnsavedChanges = activeTab?.isDirty ?? false;
-  const hasFilePath = !!activeTab?.filePath;
+  const hasContent = !!activeTab?.content?.trim();
 
-  async function handleAdd() {
-    if (!activeTab || !activeTab.filePath) {
-      setMessage({
+  async function handleSaveToCodebase() {
+    if (!activeTab?.content?.trim()) {
+      setRunOutput({
         type: 'error',
-        text: 'No file open. Save the file first.',
+        message: 'No code to save. Write some definitions first.',
       });
+      setRunPaneCollapsed(false); // Expand to show message
       return;
     }
 
-    if (hasUnsavedChanges) {
-      setMessage({
+    if (!currentProject || !currentBranch) {
+      setRunOutput({
         type: 'error',
-        text: 'File has unsaved changes. Save the file first.',
+        message: 'No project/branch selected. Select a project first.',
       });
+      setRunPaneCollapsed(false);
       return;
     }
 
-    setIsAdding(true);
-    setMessage({ type: 'info', text: 'Adding to codebase...' });
+    setIsSaving(true);
+    setRunOutput({ type: 'info', message: 'Saving to codebase...' });
+    setRunPaneCollapsed(false); // Expand to show progress
 
     try {
-      // TODO: Implement actual UCM add command
-      // This would call UCM via CLI or LSP custom command
-      // await invoke('ucm_add', { filePath: activeTab.filePath });
-
-      // For now, just show a placeholder message
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      setMessage({
-        type: 'success',
-        text: 'Successfully added to codebase!',
+      const result = await invoke<UpdateResult>('ucm_update', {
+        code: activeTab.content,
+        projectName: currentProject.name,
+        branchName: currentBranch.name,
       });
 
-      if (onAdd) {
-        onAdd();
+      if (result.success) {
+        setRunOutput({
+          type: 'success',
+          message: result.output || 'Saved to codebase',
+        });
+
+        // Refresh the namespace browser to show new definitions
+        refreshNamespace();
+
+        if (onSuccess) {
+          onSuccess();
+        }
+      } else {
+        // Show the first error, or the full output if no specific errors
+        const errorText = result.errors.length > 0
+          ? result.errors[0]
+          : result.output || 'Failed to save to codebase';
+
+        setRunOutput({
+          type: 'error',
+          message: errorText,
+        });
       }
-
-      // Clear message after 3 seconds
-      setTimeout(() => setMessage(null), 3000);
     } catch (error) {
-      setMessage({
-        type: 'error',
-        text: `Failed to add: ${error instanceof Error ? error.message : String(error)}`,
-      });
-    } finally {
-      setIsAdding(false);
-    }
-  }
+      const errorMessage = error instanceof Error ? error.message : String(error);
 
-  async function handleUpdate() {
-    if (!activeTab || !activeTab.filePath) {
-      setMessage({
-        type: 'error',
-        text: 'No file open. Save the file first.',
-      });
-      return;
-    }
-
-    if (hasUnsavedChanges) {
-      setMessage({
-        type: 'error',
-        text: 'File has unsaved changes. Save the file first.',
-      });
-      return;
-    }
-
-    setIsUpdating(true);
-    setMessage({ type: 'info', text: 'Updating codebase...' });
-
-    try {
-      // TODO: Implement actual UCM update command
-      // This would call UCM via CLI or LSP custom command
-      // await invoke('ucm_update', { filePath: activeTab.filePath });
-
-      // For now, just show a placeholder message
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      setMessage({
-        type: 'success',
-        text: 'Successfully updated codebase!',
-      });
-
-      if (onUpdate) {
-        onUpdate();
+      // Check for common error cases
+      if (errorMessage.includes('Failed to spawn ucm mcp')) {
+        setRunOutput({
+          type: 'error',
+          message: 'UCM not found. Make sure UCM is installed and in your PATH.',
+        });
+      } else {
+        setRunOutput({
+          type: 'error',
+          message: `Failed to save: ${errorMessage}`,
+        });
       }
-
-      // Clear message after 3 seconds
-      setTimeout(() => setMessage(null), 3000);
-    } catch (error) {
-      setMessage({
-        type: 'error',
-        text: `Failed to update: ${error instanceof Error ? error.message : String(error)}`,
-      });
     } finally {
-      setIsUpdating(false);
+      setIsSaving(false);
     }
   }
 
@@ -124,44 +106,20 @@ export function CodebaseActions({ onAdd, onUpdate }: CodebaseActionsProps) {
 
   return (
     <div className="codebase-actions">
-      <div className="codebase-actions-buttons">
-        <button
-          className="codebase-action-btn add-btn"
-          onClick={handleAdd}
-          disabled={isAdding || !hasFilePath || hasUnsavedChanges}
-          title={
-            !hasFilePath
-              ? 'Save file first'
-              : hasUnsavedChanges
-              ? 'Save unsaved changes first'
-              : 'Add definitions to codebase'
-          }
-        >
-          {isAdding ? 'Adding...' : 'Add to Codebase'}
-        </button>
-
-        <button
-          className="codebase-action-btn update-btn"
-          onClick={handleUpdate}
-          disabled={isUpdating || !hasFilePath || hasUnsavedChanges}
-          title={
-            !hasFilePath
-              ? 'Save file first'
-              : hasUnsavedChanges
-              ? 'Save unsaved changes first'
-              : 'Update definitions in codebase'
-          }
-        >
-          {isUpdating ? 'Updating...' : 'Update Codebase'}
-        </button>
-        <ConnectionStatus />
-      </div>
-
-      {message && (
-        <div className={`codebase-actions-message ${message.type}`}>
-          {message.text}
-        </div>
-      )}
+      <button
+        className="codebase-action-btn update-btn"
+        onClick={handleSaveToCodebase}
+        disabled={isSaving || !hasContent || !currentProject || !currentBranch}
+        title={
+          !hasContent
+            ? 'Write some code first'
+            : !currentProject || !currentBranch
+            ? 'Select a project and branch first'
+            : 'Save definitions to codebase (add/update)'
+        }
+      >
+        {isSaving ? 'Saving...' : 'Save to Codebase'}
+      </button>
     </div>
   );
 }

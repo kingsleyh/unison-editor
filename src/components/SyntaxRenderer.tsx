@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { SourceSegment, Annotation } from '../types/syntax';
 import { getHelpForSegment } from '../utils/syntaxHelp';
 import { getUCMApiClient } from '../services/ucmApi';
 import { useUnisonStore } from '../store/unisonStore';
+import { normalizeHash } from '../types/navigation';
 
 interface SyntaxRendererProps {
   segments: SourceSegment[];
@@ -64,7 +65,8 @@ export function SyntaxRenderer({ segments, onReferenceClick }: SyntaxRendererPro
         if (!currentProject || !currentBranch) return;
 
         try {
-          const hash = annotation.contents;
+          // Normalize hash to ensure # prefix for API consistency
+          const hash = normalizeHash(annotation.contents);
           const definition = await ucmClient.getDefinition(
             currentProject.name,
             currentBranch.name,
@@ -142,7 +144,7 @@ function renderSegment(
   onReferenceClick?: (name: string, type: 'term' | 'type', hash?: string) => void,
   onMouseEnter?: (e: React.MouseEvent, segment: SourceSegment, index: number) => void,
   onMouseLeave?: () => void
-): JSX.Element {
+): React.ReactElement {
   const { segment: text, annotation } = segment;
 
   const hoverHandlers = onMouseEnter && onMouseLeave ? {
@@ -166,6 +168,7 @@ function renderSegment(
         className={className}
         onClick={(e) => {
           e.preventDefault();
+          e.stopPropagation(); // Prevent bubbling to parent card's onClick
           clickHandler(onReferenceClick);
         }}
         href="#"
@@ -233,16 +236,16 @@ function getClickHandler(
   switch (annotation.tag) {
     case 'TypeReference':
       return (callback) => {
-        // TypeReference contains a hash string
-        const hash = annotation.contents;
-        // For now, use the hash as the name (we'd need a reverse lookup to get the actual name)
+        // TypeReference contains a hash string (API returns without # prefix)
+        // Normalize to ensure isHash() detection works correctly
+        const hash = normalizeHash(annotation.contents);
         callback(hash, 'type', hash);
       };
     case 'TermReference':
       return (callback) => {
-        // TermReference contains a hash string
-        const hash = annotation.contents;
-        // For now, use the hash as the name (we'd need a reverse lookup to get the actual name)
+        // TermReference contains a hash string (API returns without # prefix)
+        // Normalize to ensure isHash() detection works correctly
+        const hash = normalizeHash(annotation.contents);
         callback(hash, 'term', hash);
       };
     case 'HashQualifier':

@@ -1,4 +1,5 @@
 mod commands;
+mod mcp_client;
 mod ucm_api;
 mod lsp_proxy;
 
@@ -52,6 +53,7 @@ pub fn run() {
       commands::delete_file,
       commands::rename_file,
       commands::file_exists,
+      commands::ucm_update,
       commands::lsp_connect,
       commands::lsp_disconnect,
       commands::lsp_send_request,

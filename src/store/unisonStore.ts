@@ -51,6 +51,17 @@ interface UnisonState {
   workspaceDirectory: string | null;
   recentFiles: string[];
 
+  // Namespace browser refresh trigger
+  namespaceVersion: number;
+
+  // Run pane state
+  runOutput: {
+    type: 'success' | 'error' | 'info';
+    message: string;
+    timestamp: number;
+  } | null;
+  runPaneCollapsed: boolean;
+
   // Actions
   setConnection: (host: string, port: number, lspPort: number) => void;
   setConnected: (connected: boolean) => void;
@@ -70,6 +81,14 @@ interface UnisonState {
   // File system actions
   setWorkspaceDirectory: (directory: string | null) => void;
   addRecentFile: (filePath: string) => void;
+
+  // Namespace actions
+  refreshNamespace: () => void;
+
+  // Run pane actions
+  setRunOutput: (output: { type: 'success' | 'error' | 'info'; message: string }) => void;
+  clearRunOutput: () => void;
+  setRunPaneCollapsed: (collapsed: boolean) => void;
 }
 
 export const useUnisonStore = create<UnisonState>((set, get) => ({
@@ -91,6 +110,12 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
 
   workspaceDirectory: localStorage.getItem('workspaceDirectory') || null,
   recentFiles: JSON.parse(localStorage.getItem('recentFiles') || '[]'),
+
+  namespaceVersion: 0,
+
+  // Run pane state
+  runOutput: null,
+  runPaneCollapsed: false,
 
   // Actions
   setConnection: (host, port, lspPort) =>
@@ -171,4 +196,16 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
       localStorage.setItem('recentFiles', JSON.stringify(recentFiles));
       return { recentFiles };
     }),
+
+  // Namespace actions
+  refreshNamespace: () =>
+    set((state) => ({ namespaceVersion: state.namespaceVersion + 1 })),
+
+  // Run pane actions
+  setRunOutput: (output) =>
+    set({ runOutput: { ...output, timestamp: Date.now() } }),
+
+  clearRunOutput: () => set({ runOutput: null }),
+
+  setRunPaneCollapsed: (collapsed) => set({ runPaneCollapsed: collapsed }),
 }));

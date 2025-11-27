@@ -12,7 +12,7 @@ interface StatusDotProps {
 
 function StatusDot({ label, state, onClick }: StatusDotProps) {
   const colors = {
-    connected: '#4caf50',    // green
+    connected: '#4ec9b0',    // teal (matches project status indicator)
     connecting: '#ff9800',   // orange
     disconnected: '#f44336', // red
   };

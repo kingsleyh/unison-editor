@@ -1,3 +1,4 @@
+use crate::mcp_client::{MCPClient, UpdateResult};
 use crate::ucm_api::{
     Branch, CurrentContext, Definition, DefinitionSummary, NamespaceItem, Project, SearchResult,
     UCMApiClient,
@@ -10,12 +11,14 @@ use tauri::State;
 
 pub struct AppState {
     pub ucm_client: Mutex<Option<UCMApiClient>>,
+    pub mcp_client: Mutex<Option<MCPClient>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
             ucm_client: Mutex::new(Some(UCMApiClient::new("127.0.0.1", 5858))),
+            mcp_client: Mutex::new(None),
         }
     }
 }
@@ -343,6 +346,31 @@ pub async fn rename_file(old_path: String, new_path: String) -> Result<(), Strin
 #[tauri::command]
 pub async fn file_exists(path: String) -> Result<bool, String> {
     Ok(PathBuf::from(&path).exists())
+}
+
+// UCM MCP Commands - For updating codebase definitions
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn ucm_update(
+    code: String,
+    projectName: String,
+    branchName: String,
+    state: State<'_, AppState>,
+) -> Result<UpdateResult, String> {
+    let mut mcp_guard = state.mcp_client.lock().unwrap();
+
+    // Spawn MCP client if not already running
+    if mcp_guard.is_none() {
+        *mcp_guard = Some(MCPClient::spawn()?);
+    }
+
+    let mcp_client = mcp_guard
+        .as_mut()
+        .ok_or("Failed to get MCP client")?;
+
+    // Call the update tool
+    mcp_client.update_definitions(&code, &projectName, &branchName)
 }
 
 // LSP Commands

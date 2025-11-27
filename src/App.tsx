@@ -4,8 +4,10 @@ import { ProjectBranchSelector } from './components/ProjectBranchSelector';
 import { Navigation } from './components/Navigation';
 import { DefinitionStack } from './components/DefinitionStack';
 import { ResizableSplitter } from './components/ResizableSplitter';
+import { VerticalResizableSplitter } from './components/VerticalResizableSplitter';
 import { TabBar } from './components/TabBar';
 import { CodebaseActions } from './components/CodebaseActions';
+import { RunPane } from './components/RunPane';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
@@ -23,6 +25,8 @@ function App() {
     getActiveTab,
     setConnected,
     isConnected,
+    runPaneCollapsed,
+    setRunPaneCollapsed,
   } = useUnisonStore();
 
   const [connectionChecking, setConnectionChecking] = useState(true);
@@ -30,6 +34,7 @@ function App() {
     name: string;
     type: 'term' | 'type';
   } | null>(null);
+  const [revealInTree, setRevealInTree] = useState<string | null>(null);
 
   const client = getUCMApiClient();
   const saveTimeoutRef = useRef<number | null>(null);
@@ -60,7 +65,23 @@ function App() {
 
   function handleOpenDefinition(name: string, type: 'term' | 'type') {
     // Show in definition stack
+    // Tree reveal is now handled by DefinitionStack after resolution
     setSelectedDefinition({ name, type });
+  }
+
+  /**
+   * Handle reveal in tree request from DefinitionStack.
+   * This is called after definition resolution to ensure we have the correct FQN.
+   */
+  function handleRevealInTree(fqn: string, _type: 'term' | 'type') {
+    // Guard: Never reveal hashes in tree
+    if (fqn.startsWith('#')) {
+      console.warn('[App] Ignoring hash reveal request:', fqn);
+      return;
+    }
+    // Use timestamp suffix to re-trigger even for same path
+    // Using '|' as delimiter since it's not valid in FQNs or hashes
+    setRevealInTree(`${fqn}|${Date.now()}`);
   }
 
   async function handleFileClick(path: string, name: string) {
@@ -238,6 +259,7 @@ function App() {
               <Navigation
                 onFileClick={handleFileClick}
                 onDefinitionClick={handleOpenDefinition}
+                revealInTree={revealInTree}
               />
             }
             right={
@@ -249,6 +271,7 @@ function App() {
                   <DefinitionStack
                     selectedDefinition={selectedDefinition}
                     onAddToScratch={handleAddToScratch}
+                    onRevealInTree={handleRevealInTree}
                   />
                 }
                 right={
@@ -263,24 +286,40 @@ function App() {
                       <CodebaseActions />
                     </div>
 
-                    <div className="editor-container">
-                      {activeTab ? (
-                        <Editor
-                          value={activeTab.content}
-                          onChange={handleEditorChange}
-                          language={activeTab.language}
-                          filePath={activeTab.filePath}
-                          onDefinitionClick={handleOpenDefinition}
-                        />
-                      ) : (
-                        <div className="no-editor">
-                          <p>No scratch file open</p>
-                          <button onClick={handleNewFile}>
-                            Create Scratch File
-                          </button>
+                    <VerticalResizableSplitter
+                      minTopHeight={150}
+                      minBottomHeight={80}
+                      defaultTopPercent={75}
+                      bottomCollapsed={runPaneCollapsed}
+                      onBottomCollapse={setRunPaneCollapsed}
+                      collapsedHeight={32}
+                      top={
+                        <div className="editor-container">
+                          {activeTab ? (
+                            <Editor
+                              value={activeTab.content}
+                              onChange={handleEditorChange}
+                              language={activeTab.language}
+                              filePath={activeTab.filePath}
+                              onDefinitionClick={handleOpenDefinition}
+                            />
+                          ) : (
+                            <div className="no-editor">
+                              <p>No scratch file open</p>
+                              <button onClick={handleNewFile}>
+                                Create Scratch File
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      }
+                      bottom={
+                        <RunPane
+                          isCollapsed={runPaneCollapsed}
+                          onToggleCollapse={() => setRunPaneCollapsed(!runPaneCollapsed)}
+                        />
+                      }
+                    />
                   </main>
                 }
               />

@@ -153,8 +153,6 @@ async function resolveToFQN(
   name: string
 ): Promise<{ fqn: string; hash: string; type: 'term' | 'type' } | null> {
   try {
-    console.log('[resolveToFQN] Searching for:', name, 'in', projectName, '/', branchName);
-
     // Search for the name using the find API
     const results = await invoke<SearchResult[]>('find_definitions', {
       projectName,
@@ -163,10 +161,7 @@ async function resolveToFQN(
       limit: 10,
     });
 
-    console.log('[resolveToFQN] Find results:', results);
-
     if (!results || results.length === 0) {
-      console.log('[resolveToFQN] No results found');
       return null;
     }
 
@@ -176,7 +171,6 @@ async function resolveToFQN(
       const parts = result.name.split('.');
       const lastPart = parts[parts.length - 1];
       if (lastPart === name || result.name === name) {
-        console.log('[resolveToFQN] Found exact match:', result.name);
         return {
           fqn: result.name,
           hash: result.hash,
@@ -186,7 +180,6 @@ async function resolveToFQN(
     }
 
     // If no exact match, return the first result as best guess
-    console.log('[resolveToFQN] Using first result as best guess:', results[0].name);
     return {
       fqn: results[0].name,
       hash: results[0].hash,
@@ -222,6 +215,8 @@ function extractTypeSignature(segments: SourceSegment[]): string | null {
 
 class UCMHoverProvider implements monaco.languages.HoverProvider {
   private cache = new ProviderCache<monaco.languages.Hover>(30000);
+  // Track in-flight requests to prevent duplicate API calls
+  private pendingRequests = new Map<string, Promise<monaco.languages.Hover | null>>();
 
   async provideHover(
     model: monaco.editor.ITextModel,
@@ -235,20 +230,46 @@ class UCMHoverProvider implements monaco.languages.HoverProvider {
         return null;
       }
 
-      console.log('[Hover] Looking up:', word);
-
       // Check cache first
       const cacheKey = `${word}`;
       const cached = this.cache.get(cacheKey);
       if (cached) {
-        console.log('[Hover] Cache hit for:', word);
         return cached;
       }
 
+      // Check if there's already a pending request for this word
+      const pending = this.pendingRequests.get(cacheKey);
+      if (pending) {
+        return pending;
+      }
+
+      // Create the request promise and store it
+      const requestPromise = this.doProvideHover(word, model, position, token, cacheKey);
+      this.pendingRequests.set(cacheKey, requestPromise);
+
+      try {
+        return await requestPromise;
+      } finally {
+        // Clean up pending request
+        this.pendingRequests.delete(cacheKey);
+      }
+    } catch (error) {
+      console.error('Hover provider error:', error);
+      return null;
+    }
+  }
+
+  private async doProvideHover(
+    word: string,
+    model: monaco.editor.ITextModel,
+    position: monaco.Position,
+    token: monaco.CancellationToken,
+    cacheKey: string
+  ): Promise<monaco.languages.Hover | null> {
+    try {
       // First, check if it's a built-in syntax construct
       const syntaxHelp = getSyntaxHelp(word);
       if (syntaxHelp) {
-        console.log('[Hover] Built-in syntax help for:', word);
         const hover: monaco.languages.Hover = {
           contents: [{ value: syntaxHelp }],
         };
@@ -263,7 +284,6 @@ class UCMHoverProvider implements monaco.languages.HoverProvider {
       // Simple check for string literal context
       const inString = (beforeCursor.split('"').length - 1) % 2 === 1;
       if (inString) {
-        console.log('[Hover] Inside string literal');
         const hover: monaco.languages.Hover = {
           contents: [{ value: 'The value inside the double quotes is a `Text` literal.' }],
         };
@@ -273,7 +293,6 @@ class UCMHoverProvider implements monaco.languages.HoverProvider {
 
       // Check if it's a numeric literal
       if (/^-?\d+(\.\d+)?$/.test(word)) {
-        console.log('[Hover] Numeric literal');
         let helpText = 'A numeric literal. ';
         if (word.includes('.')) {
           helpText += 'This is a `Float` value.';
@@ -297,31 +316,23 @@ class UCMHoverProvider implements monaco.languages.HoverProvider {
         return null;
       }
 
-      console.log('[Hover] Context:', { projectName, branchName });
-
       // First, try the exact name as given
-      console.log('[Hover] Invoking get_definition for:', word);
       let definition = await invoke<DefinitionSummary | null>('get_definition', {
         projectName,
         branchName,
         name: word,
       });
 
-      console.log('[Hover] Definition result (direct):', definition);
-
       // If not found, try to resolve to FQN using find API
       if (!definition && !token.isCancellationRequested) {
-        console.log('[Hover] Direct lookup failed, trying FQN resolution for:', word);
         const resolved = await resolveToFQN(projectName, branchName, word);
 
         if (resolved && !token.isCancellationRequested) {
-          console.log('[Hover] Resolved to FQN:', resolved.fqn);
           definition = await invoke<DefinitionSummary | null>('get_definition', {
             projectName,
             branchName,
             name: resolved.fqn,
           });
-          console.log('[Hover] Definition result (via FQN):', definition);
         }
       }
 

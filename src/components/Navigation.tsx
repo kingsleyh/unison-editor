@@ -1,17 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FileExplorer } from './FileExplorer';
 import { NamespaceBrowser } from './NamespaceBrowser';
 import { WorkspaceSelector } from './WorkspaceSelector';
 import { FileCreationModal } from './FileCreationModal';
+import { VerticalResizableSplitter } from './VerticalResizableSplitter';
 import { useUnisonStore } from '../store/unisonStore';
 import { getFileSystemService } from '../services/fileSystem';
 
 interface NavigationProps {
   onFileClick: (path: string, name: string) => void;
   onDefinitionClick: (name: string, type: 'term' | 'type') => void;
+  /** FQN path to reveal and highlight in the namespace browser */
+  revealInTree?: string | null;
 }
 
-export function Navigation({ onFileClick, onDefinitionClick }: NavigationProps) {
+export function Navigation({ onFileClick, onDefinitionClick, revealInTree }: NavigationProps) {
   const [localFilesExpanded, setLocalFilesExpanded] = useState(true);
   const [codebaseExpanded, setCodebaseExpanded] = useState(true);
   const [showOnlyUnison, setShowOnlyUnison] = useState(true);
@@ -21,6 +24,13 @@ export function Navigation({ onFileClick, onDefinitionClick }: NavigationProps) 
 
   const { workspaceDirectory } = useUnisonStore();
   const fileSystemService = getFileSystemService();
+
+  // Auto-expand codebase section when revealInTree is set
+  useEffect(() => {
+    if (revealInTree) {
+      setCodebaseExpanded(true);
+    }
+  }, [revealInTree]);
 
   async function handleCreateFile(filename: string, template: string) {
     if (!workspaceDirectory) {
@@ -54,59 +64,90 @@ export function Navigation({ onFileClick, onDefinitionClick }: NavigationProps) 
     }
   }
 
+  const localFilesSection = (
+    <div className="nav-section">
+      <div
+        className="nav-section-header"
+        onClick={() => setLocalFilesExpanded(!localFilesExpanded)}
+      >
+        <span className="nav-section-arrow">
+          {localFilesExpanded ? '▼' : '▶'}
+        </span>
+        <span className="nav-section-title">Local Files</span>
+      </div>
+      {localFilesExpanded && (
+        <div className="nav-section-content">
+          <WorkspaceSelector />
+
+          <div className="file-actions">
+            <button
+              className="btn-new-file"
+              onClick={() => setIsCreateModalOpen(true)}
+              disabled={!workspaceDirectory}
+              title={workspaceDirectory ? 'Create new .u file' : 'Select a workspace first'}
+            >
+              + New File
+            </button>
+          </div>
+
+          {createError && (
+            <div className="file-error">
+              {createError}
+              <button onClick={() => setCreateError(null)}>✕</button>
+            </div>
+          )}
+
+          <div className="file-filter">
+            <label>
+              <input
+                type="checkbox"
+                checked={showOnlyUnison}
+                onChange={(e) => setShowOnlyUnison(e.target.checked)}
+              />
+              Show only .u files
+            </label>
+          </div>
+          <FileExplorer
+            onFileClick={onFileClick}
+            showOnlyUnison={showOnlyUnison}
+            refreshTrigger={refreshTrigger}
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  const codebaseSection = (
+    <div className="nav-section">
+      <div
+        className="nav-section-header"
+        onClick={() => setCodebaseExpanded(!codebaseExpanded)}
+      >
+        <span className="nav-section-arrow">
+          {codebaseExpanded ? '▼' : '▶'}
+        </span>
+        <span className="nav-section-title">UCM Codebase</span>
+      </div>
+      {codebaseExpanded && (
+        <div className="nav-section-content">
+          <NamespaceBrowser
+            onOpenDefinition={onDefinitionClick}
+            revealPath={revealInTree}
+          />
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="navigation">
-      {/* Local Files Section */}
-      <div className="nav-section">
-        <div
-          className="nav-section-header"
-          onClick={() => setLocalFilesExpanded(!localFilesExpanded)}
-        >
-          <span className="nav-section-arrow">
-            {localFilesExpanded ? '▼' : '▶'}
-          </span>
-          <span className="nav-section-title">Local Files</span>
-        </div>
-        {localFilesExpanded && (
-          <div className="nav-section-content">
-            <WorkspaceSelector />
-
-            <div className="file-actions">
-              <button
-                className="btn-new-file"
-                onClick={() => setIsCreateModalOpen(true)}
-                disabled={!workspaceDirectory}
-                title={workspaceDirectory ? 'Create new .u file' : 'Select a workspace first'}
-              >
-                + New File
-              </button>
-            </div>
-
-            {createError && (
-              <div className="file-error">
-                {createError}
-                <button onClick={() => setCreateError(null)}>✕</button>
-              </div>
-            )}
-
-            <div className="file-filter">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={showOnlyUnison}
-                  onChange={(e) => setShowOnlyUnison(e.target.checked)}
-                />
-                Show only .u files
-              </label>
-            </div>
-            <FileExplorer
-              onFileClick={onFileClick}
-              showOnlyUnison={showOnlyUnison}
-              refreshTrigger={refreshTrigger}
-            />
-          </div>
-        )}
-      </div>
+      <VerticalResizableSplitter
+        top={localFilesSection}
+        bottom={codebaseSection}
+        minTopHeight={32}
+        minBottomHeight={32}
+        defaultTopPercent={40}
+      />
 
       <FileCreationModal
         isOpen={isCreateModalOpen}
@@ -114,24 +155,6 @@ export function Navigation({ onFileClick, onDefinitionClick }: NavigationProps) 
         onCreate={handleCreateFile}
         defaultPath={workspaceDirectory || undefined}
       />
-
-      {/* UCM Codebase Section */}
-      <div className="nav-section">
-        <div
-          className="nav-section-header"
-          onClick={() => setCodebaseExpanded(!codebaseExpanded)}
-        >
-          <span className="nav-section-arrow">
-            {codebaseExpanded ? '▼' : '▶'}
-          </span>
-          <span className="nav-section-title">UCM Codebase</span>
-        </div>
-        {codebaseExpanded && (
-          <div className="nav-section-content">
-            <NamespaceBrowser onOpenDefinition={onDefinitionClick} />
-          </div>
-        )}
-      </div>
     </div>
   );
 }
