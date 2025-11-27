@@ -54,6 +54,9 @@ interface UnisonState {
   // Namespace browser refresh trigger
   namespaceVersion: number;
 
+  // Definitions refresh trigger (for invalidating definition cache)
+  definitionsVersion: number;
+
   // Run pane state
   runOutput: {
     type: 'success' | 'error' | 'info';
@@ -85,6 +88,9 @@ interface UnisonState {
   // Namespace actions
   refreshNamespace: () => void;
 
+  // Definitions actions
+  refreshDefinitions: () => void;
+
   // Run pane actions
   setRunOutput: (output: { type: 'success' | 'error' | 'info'; message: string }) => void;
   clearRunOutput: () => void;
@@ -112,6 +118,7 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   recentFiles: JSON.parse(localStorage.getItem('recentFiles') || '[]'),
 
   namespaceVersion: 0,
+  definitionsVersion: 0,
 
   // Run pane state
   runOutput: null,
@@ -200,6 +207,10 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   // Namespace actions
   refreshNamespace: () =>
     set((state) => ({ namespaceVersion: state.namespaceVersion + 1 })),
+
+  // Definitions actions
+  refreshDefinitions: () =>
+    set((state) => ({ definitionsVersion: state.definitionsVersion + 1 })),
 
   // Run pane actions
   setRunOutput: (output) =>

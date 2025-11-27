@@ -42,7 +42,7 @@ export function DefinitionStack({
   onAddToScratch,
   onRevealInTree,
 }: DefinitionStackProps) {
-  const { currentProject, currentBranch } = useUnisonStore();
+  const { currentProject, currentBranch, definitionsVersion } = useUnisonStore();
   const [cards, setCards] = useState<DefinitionCardState[]>([]);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const client = getUCMApiClient();
@@ -107,6 +107,66 @@ export function DefinitionStack({
     // Enable tree reveal for all navigation (editor clicks, tree clicks)
     handleNavigation(selectedDefinition.name, selectedDefinition.type, true);
   }, [selectedDefinition]);
+
+  // When definitions version changes (after save to codebase), refresh all open cards
+  useEffect(() => {
+    if (definitionsVersion === 0 || !currentProject || !currentBranch || cards.length === 0) {
+      return;
+    }
+
+    console.log('[DefinitionStack] Definitions version changed, refreshing all cards');
+
+    // Refresh each card by reloading its definition
+    async function refreshAllCards() {
+      const currentCards = cardsRef.current;
+
+      for (const card of currentCards) {
+        if (!card.fqn || card.loading) continue;
+
+        try {
+          // Re-resolve to get fresh data (cache was already cleared)
+          const resolved = await resolver.resolve(
+            card.fqn,
+            currentProject!.name,
+            currentBranch!.name
+          );
+
+          if (!resolved) {
+            console.log('[DefinitionStack] Card no longer exists:', card.fqn);
+            continue;
+          }
+
+          // Load fresh definition
+          const definition = await client.getDefinition(
+            currentProject!.name,
+            currentBranch!.name,
+            resolved.hash
+          );
+
+          if (definition) {
+            // Update card with new data
+            setCards((prev) =>
+              prev.map((c) =>
+                c.id === card.id
+                  ? {
+                      ...c,
+                      hash: resolved.hash,
+                      resolved,
+                      definition,
+                    }
+                  : c
+              )
+            );
+            console.log('[DefinitionStack] Refreshed card:', card.fqn);
+          }
+        } catch (err) {
+          console.error('[DefinitionStack] Failed to refresh card:', card.fqn, err);
+        }
+      }
+    }
+
+    refreshAllCards();
+  }, [definitionsVersion]);
 
   /**
    * Unified navigation handler - resolves identifier and loads definition.

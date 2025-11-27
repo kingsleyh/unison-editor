@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useUnisonStore } from '../store/unisonStore';
+import { getDefinitionResolver } from '../services/definitionResolver';
 
 interface UpdateResult {
   success: boolean;
@@ -19,6 +20,7 @@ export function CodebaseActions({ onSuccess }: CodebaseActionsProps) {
     currentProject,
     currentBranch,
     refreshNamespace,
+    refreshDefinitions,
     setRunOutput,
     setRunPaneCollapsed,
   } = useUnisonStore();
@@ -63,8 +65,14 @@ export function CodebaseActions({ onSuccess }: CodebaseActionsProps) {
           message: result.output || 'Saved to codebase',
         });
 
+        // Clear the definition resolver cache so we get fresh data
+        getDefinitionResolver().clearCache();
+
         // Refresh the namespace browser to show new definitions
         refreshNamespace();
+
+        // Trigger definition refresh to reload any open definition cards
+        refreshDefinitions();
 
         if (onSuccess) {
           onSuccess();
