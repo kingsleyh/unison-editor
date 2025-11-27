@@ -152,7 +152,7 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
 
   // Run pane state
   runOutput: null,
-  runPaneCollapsed: false,
+  runPaneCollapsed: true,
 
   // Definition cards state
   definitionCards: [],

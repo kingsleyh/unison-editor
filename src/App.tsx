@@ -40,7 +40,7 @@ function App() {
 
   // Panel collapse states
   const [navPanelCollapsed, setNavPanelCollapsed] = useState(false);
-  const [termsPanelCollapsed, setTermsPanelCollapsed] = useState(false);
+  const [termsPanelCollapsed, setTermsPanelCollapsed] = useState(true);
 
   const client = getUCMApiClient();
   const saveTimeoutRef = useRef<number | null>(null);
