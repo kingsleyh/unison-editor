@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import type { DefinitionSummary } from '../types/syntax';
+import type { ResolvedDefinition } from '../types/navigation';
 
 export interface Project {
   name: string;
@@ -15,6 +17,22 @@ export interface Definition {
   hash?: string;
   type: 'term' | 'type';
   source?: string;
+}
+
+export interface DefinitionCardState {
+  id: string;
+  /** The identifier we're looking up (could be hash or FQN initially) */
+  pendingIdentifier: string;
+  /** Canonical hash - primary key for deduplication (null until resolved) */
+  hash: string | null;
+  /** Fully qualified name - for display and tree navigation (null until resolved) */
+  fqn: string | null;
+  /** Full resolution info from DefinitionResolver */
+  resolved: ResolvedDefinition | null;
+  /** The loaded definition */
+  definition: DefinitionSummary | null;
+  loading: boolean;
+  error: string | null;
 }
 
 export interface EditorTab {
@@ -65,6 +83,10 @@ interface UnisonState {
   } | null;
   runPaneCollapsed: boolean;
 
+  // Definition cards state
+  definitionCards: DefinitionCardState[];
+  selectedCardId: string | null;
+
   // Actions
   setConnection: (host: string, port: number, lspPort: number) => void;
   setConnected: (connected: boolean) => void;
@@ -95,6 +117,14 @@ interface UnisonState {
   setRunOutput: (output: { type: 'success' | 'error' | 'info'; message: string }) => void;
   clearRunOutput: () => void;
   setRunPaneCollapsed: (collapsed: boolean) => void;
+
+  // Definition cards actions
+  setDefinitionCards: (cards: DefinitionCardState[]) => void;
+  addDefinitionCard: (card: DefinitionCardState) => void;
+  updateDefinitionCard: (cardId: string, updates: Partial<DefinitionCardState>) => void;
+  removeDefinitionCard: (cardId: string) => void;
+  setSelectedCardId: (cardId: string | null) => void;
+  getDefinitionCards: () => DefinitionCardState[];
 }
 
 export const useUnisonStore = create<UnisonState>((set, get) => ({
@@ -123,6 +153,10 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   // Run pane state
   runOutput: null,
   runPaneCollapsed: false,
+
+  // Definition cards state
+  definitionCards: [],
+  selectedCardId: null,
 
   // Actions
   setConnection: (host, port, lspPort) =>
@@ -219,4 +253,29 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   clearRunOutput: () => set({ runOutput: null }),
 
   setRunPaneCollapsed: (collapsed) => set({ runPaneCollapsed: collapsed }),
+
+  // Definition cards actions
+  setDefinitionCards: (cards) => set({ definitionCards: cards }),
+
+  addDefinitionCard: (card) =>
+    set((state) => ({
+      definitionCards: [card, ...state.definitionCards],
+      selectedCardId: card.id,
+    })),
+
+  updateDefinitionCard: (cardId, updates) =>
+    set((state) => ({
+      definitionCards: state.definitionCards.map((card) =>
+        card.id === cardId ? { ...card, ...updates } : card
+      ),
+    })),
+
+  removeDefinitionCard: (cardId) =>
+    set((state) => ({
+      definitionCards: state.definitionCards.filter((card) => card.id !== cardId),
+    })),
+
+  setSelectedCardId: (cardId) => set({ selectedCardId: cardId }),
+
+  getDefinitionCards: () => get().definitionCards,
 }));

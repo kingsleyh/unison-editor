@@ -136,6 +136,51 @@ body {
   min-width: 0;
 }
 
+/* Collapsed state for horizontal splitter */
+.resizable-left.collapsed {
+  background-color: #252526;
+  border-right: 1px solid #3e3e42;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.resizable-left.collapsed:hover {
+  background-color: #2a2d2e;
+}
+
+.resizable-divider.collapsed {
+  width: 4px;
+  background-color: #3e3e42;
+}
+
+.resizable-divider.collapsed:hover {
+  background-color: #007acc;
+}
+
+/* Vertical collapsed label */
+.collapsed-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  gap: 8px;
+  height: 100%;
+}
+
+.collapsed-label-icon {
+  font-size: 10px;
+  color: #858585;
+}
+
+.collapsed-label-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  color: #cccccc;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
 /* Vertical Resizable Splitter */
 .vertical-resizable-container {
   display: flex;

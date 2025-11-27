@@ -33,8 +33,14 @@ function App() {
   const [selectedDefinition, setSelectedDefinition] = useState<{
     name: string;
     type: 'term' | 'type';
+    /** Unique ID to ensure each click is treated as a new selection */
+    id: number;
   } | null>(null);
   const [revealInTree, setRevealInTree] = useState<string | null>(null);
+
+  // Panel collapse states
+  const [navPanelCollapsed, setNavPanelCollapsed] = useState(false);
+  const [termsPanelCollapsed, setTermsPanelCollapsed] = useState(false);
 
   const client = getUCMApiClient();
   const saveTimeoutRef = useRef<number | null>(null);
@@ -64,9 +70,15 @@ function App() {
   }
 
   function handleOpenDefinition(name: string, type: 'term' | 'type') {
+    // Auto-expand the Terms panel if it's collapsed
+    if (termsPanelCollapsed) {
+      setTermsPanelCollapsed(false);
+    }
+
     // Show in definition stack
     // Tree reveal is now handled by DefinitionStack after resolution
-    setSelectedDefinition({ name, type });
+    // Use unique ID so each click triggers useEffect even for same definition
+    setSelectedDefinition({ name, type, id: Date.now() });
   }
 
   /**
@@ -255,6 +267,9 @@ function App() {
             minLeftWidth={200}
             maxLeftWidth={400}
             defaultLeftWidth={250}
+            leftCollapsed={navPanelCollapsed}
+            onLeftCollapse={setNavPanelCollapsed}
+            collapsedLabel="Explorer"
             left={
               <Navigation
                 onFileClick={handleFileClick}
@@ -267,6 +282,9 @@ function App() {
                 minLeftWidth={300}
                 maxLeftWidth={800}
                 defaultLeftWidth={400}
+                leftCollapsed={termsPanelCollapsed}
+                onLeftCollapse={setTermsPanelCollapsed}
+                collapsedLabel="Terms"
                 left={
                   <DefinitionStack
                     selectedDefinition={selectedDefinition}
