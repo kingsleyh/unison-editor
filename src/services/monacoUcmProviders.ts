@@ -408,14 +408,16 @@ class UCMHoverProvider implements monaco.languages.HoverProvider {
 
 class UCMCompletionProvider implements monaco.languages.CompletionItemProvider {
   private cache = new ProviderCache<monaco.languages.CompletionList>(10000);
+  // Track in-flight requests to prevent duplicate API calls
+  private pendingRequests = new Map<string, Promise<monaco.languages.CompletionList>>();
 
-  // Trigger on any word character or dot
+  // Trigger on dot for qualified names
   triggerCharacters = ['.'];
 
   async provideCompletionItems(
     model: monaco.editor.ITextModel,
     position: monaco.Position,
-    _context: monaco.languages.CompletionContext,
+    context: monaco.languages.CompletionContext,
     token: monaco.CancellationToken
   ): Promise<monaco.languages.CompletionList | null> {
     try {
@@ -424,18 +426,31 @@ class UCMCompletionProvider implements monaco.languages.CompletionItemProvider {
       const lineContent = model.getLineContent(position.lineNumber);
       const prefix = lineContent.substring(0, position.column - 1);
 
-      // Extract the full partial identifier (including dots)
+      // Extract the full partial identifier (including dots for qualified names)
       const match = prefix.match(/[\w.]*$/);
-      const query = match ? match[0] : word.word;
+      let query = match ? match[0] : word.word;
 
-      if (!query || query.length < 2) {
+      // Handle dot trigger - if we just typed a dot, query is the namespace prefix
+      if (context.triggerCharacter === '.' && query.endsWith('.')) {
+        // Search for items in this namespace
+        query = query.slice(0, -1); // Remove trailing dot for search
+      }
+
+      // Allow single character queries for better responsiveness
+      if (!query || query.length < 1) {
         return { suggestions: [] };
       }
 
-      // Check cache
-      const cacheKey = `${query}`;
+      // Check cache first
+      const cacheKey = `completion:${query}`;
       const cached = this.cache.get(cacheKey);
       if (cached) return cached;
+
+      // Check if there's already a pending request for this query
+      const pending = this.pendingRequests.get(cacheKey);
+      if (pending) {
+        return pending;
+      }
 
       // Get current context
       const projectName = ucmContext.getProjectName();
@@ -445,50 +460,100 @@ class UCMCompletionProvider implements monaco.languages.CompletionItemProvider {
         return { suggestions: [] };
       }
 
-      // Search UCM for completions
-      const results = await invoke<SearchResult[]>('find_definitions', {
+      // Create the request promise
+      const requestPromise = this.doProvideCompletions(
+        query,
+        word,
+        position,
         projectName,
         branchName,
-        query,
-        limit: 50,
-      });
+        token,
+        cacheKey
+      );
+      this.pendingRequests.set(cacheKey, requestPromise);
 
-      if (token.isCancellationRequested) {
-        return { suggestions: [] };
+      try {
+        return await requestPromise;
+      } finally {
+        this.pendingRequests.delete(cacheKey);
+      }
+    } catch (error) {
+      console.error('Completion provider error:', error);
+      return { suggestions: [] };
+    }
+  }
+
+  private async doProvideCompletions(
+    query: string,
+    word: monaco.editor.IWordAtPosition,
+    position: monaco.Position,
+    projectName: string,
+    branchName: string,
+    token: monaco.CancellationToken,
+    cacheKey: string
+  ): Promise<monaco.languages.CompletionList> {
+    // Search UCM for completions
+    const results = await invoke<SearchResult[]>('find_definitions', {
+      projectName,
+      branchName,
+      query,
+      limit: 100,
+    });
+
+    if (token.isCancellationRequested) {
+      return { suggestions: [] };
+    }
+
+    // Convert to Monaco completion items
+    const suggestions: monaco.languages.CompletionItem[] = results.map((result, index) => {
+      // Get the short name (last part after dot)
+      const shortName = result.name.split('.').pop() || result.name;
+
+      // Determine completion kind based on type and naming conventions
+      let kind: monaco.languages.CompletionItemKind;
+      if (result.type === 'type') {
+        // Check if it's likely an ability (often has Request/Handler suffix or is capitalized)
+        kind = monaco.languages.CompletionItemKind.Class;
+      } else {
+        // Check if it's a constructor (starts with uppercase)
+        if (/^[A-Z]/.test(shortName)) {
+          kind = monaco.languages.CompletionItemKind.Constructor;
+        } else {
+          kind = monaco.languages.CompletionItemKind.Function;
+        }
       }
 
-      // Convert to Monaco completion items
-      const suggestions = results.map(result => ({
-        label: result.name,
-        kind: result.type === 'term'
-          ? monaco.languages.CompletionItemKind.Function
-          : monaco.languages.CompletionItemKind.Class,
-        detail: result.type,
-        documentation: {
-          value: `Hash: \`${result.hash.substring(0, 8)}...\``
+      return {
+        label: {
+          label: shortName,
+          description: result.name !== shortName ? result.name : undefined,
         },
-        insertText: result.name.split('.').pop() || result.name,
+        kind,
+        detail: result.type,
+        // Insert just the short name since user likely has 'use' clauses
+        insertText: shortName,
+        // Sort by relevance (exact prefix matches first)
+        sortText: result.name.toLowerCase().startsWith(query.toLowerCase())
+          ? `0${index.toString().padStart(3, '0')}`
+          : `1${index.toString().padStart(3, '0')}`,
         range: {
           startLineNumber: position.lineNumber,
           startColumn: word.startColumn,
           endLineNumber: position.lineNumber,
           endColumn: word.endColumn,
         },
-      }));
-
-      const completionList: monaco.languages.CompletionList = {
-        suggestions,
-        incomplete: results.length >= 50, // More results may be available
       };
+    });
 
-      // Cache the result
-      this.cache.set(cacheKey, completionList);
+    const completionList: monaco.languages.CompletionList = {
+      suggestions,
+      incomplete: results.length >= 100, // More results may be available
+    };
 
-      return completionList;
-    } catch (error) {
-      console.error('Completion provider error:', error);
-      return { suggestions: [] };
-    }
+    // Cache the result
+    this.cache.set(cacheKey, completionList);
+
+    return completionList;
   }
 }
 

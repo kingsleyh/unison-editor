@@ -173,6 +173,9 @@ export function Editor({
           automaticLayout: true,
           tabSize: 2,
           insertSpaces: true,
+          // Disable automatic occurrence highlighting on click (too noisy)
+          // User can still use Cmd+Shift+L to select all occurrences
+          occurrencesHighlight: 'off',
           // LSP features are automatically enabled via monaco-languageclient
           quickSuggestions: {
             other: true,
