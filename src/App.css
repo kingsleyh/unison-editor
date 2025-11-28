@@ -2083,7 +2083,81 @@ body {
 }
 
 .codebase-action-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Auto-run slider toggle */
+.auto-run-slider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 0;
+  font-size: 11px;
+  color: #999;
+  user-select: none;
+}
+
+.auto-run-slider:hover {
+  color: #ccc;
+}
+
+.auto-run-slider input[type="checkbox"] {
+  display: none;
+}
+
+.auto-run-slider .slider {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background-color: #3a3a3a;
+  border-radius: 9px;
+  transition: background-color 0.2s;
+}
+
+.auto-run-slider .slider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background-color: #888;
+  border-radius: 50%;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.auto-run-slider input:checked + .slider {
+  background-color: rgba(78, 201, 176, 0.3);
+}
+
+.auto-run-slider input:checked + .slider::before {
+  transform: translateX(14px);
+  background-color: #4ec9b0;
+}
+
+.auto-run-slider .auto-run-label {
+  color: inherit;
+}
+
+/* Typecheck All button - blue color */
+.codebase-action-btn.typecheck-all-btn {
+  background-color: transparent;
+  color: #569cd6;
+  border: 1px solid #569cd6;
+  font-size: 10px;
+  padding: 4px 8px;
+  letter-spacing: -1px;
+}
+
+.codebase-action-btn.typecheck-all-btn:hover:not(:disabled) {
+  background-color: rgba(86, 156, 214, 0.1);
+  color: #6eb3f7;
+}
+
+.codebase-action-btn.typecheck-all-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -2140,7 +2214,6 @@ body {
   background-color: transparent;
   color: #cccccc;
   border: 1px solid #5a5a5a;
-  margin-left: auto;
 }
 
 .codebase-action-btn.update-btn:hover:not(:disabled) {
@@ -2418,6 +2491,18 @@ body {
   border-left: 3px solid #4ec9b0;
 }
 
+/* Error state for watch result block (failed tests) */
+.watch-result-block.error {
+  background: rgba(244, 135, 113, 0.1);
+  border-left-color: #f48771;
+}
+
+/* Success state for watch result block */
+.watch-result-block.success {
+  background: rgba(78, 201, 176, 0.1);
+  border-left-color: #4ec9b0;
+}
+
 .watch-expression-line {
   color: #9cdcfe;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
@@ -2481,6 +2566,30 @@ body {
   transform: scale(1.2);
 }
 
+/* Runnable IO function play button - purple color */
+.runnable-function-run-button {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  margin-left: 4px;
+}
+
+.runnable-function-run-button::before {
+  content: '▶';
+  color: #c586c0; /* Purple/magenta for IO functions */
+  font-size: 10px;
+  opacity: 0.6;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.runnable-function-run-button:hover::before {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
 /* Vertical splitter collapsed state */
 .vertical-resizable-divider.collapsed {
   display: none;
@@ -2488,4 +2597,39 @@ body {
 
 .vertical-resizable-bottom.collapsed {
   flex-shrink: 0;
+}
+
+/* ============================================================================
+   Editor Status Indicator
+   ============================================================================ */
+
+.editor-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 3px;
+  font-size: 11.5px;
+  font-weight: 500;
+  margin-left: auto;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.editor-status-indicator.all-good {
+  background-color: rgba(78, 201, 176, 0.15);
+  color: #4ec9b0;
+}
+
+.editor-status-indicator.has-problems {
+  background-color: rgba(244, 135, 113, 0.15);
+  color: #f48771;
+}
+
+.editor-status-indicator .status-icon {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.editor-status-indicator .status-text {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }

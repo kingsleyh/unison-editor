@@ -64,6 +64,9 @@ export function getWatchExpression(lineContent: string): string {
  * This allows running one watch expression while still having access to
  * any functions/values defined in the file.
  *
+ * Instead of removing lines (which can break Unison syntax), we comment out
+ * other watch expressions and test expressions.
+ *
  * @param fullCode The full editor content
  * @param targetLineNumber The line number of the watch expression to include (1-based)
  * @returns Code with all definitions but only the target watch expression
@@ -71,54 +74,25 @@ export function getWatchExpression(lineContent: string): string {
 export function buildSingleWatchCode(fullCode: string, targetLineNumber: number): string {
   const lines = fullCode.split('\n');
   const resultLines: string[] = [];
-  const tests = detectTestExpressions(fullCode);
-  const testLineNumbers = new Set(tests.map(t => t.lineNumber));
-
-  // Find test.verify block ranges to skip
-  const testBlockRanges: Array<{start: number, end: number}> = [];
-  for (const test of tests) {
-    if (test.type === 'test.verify') {
-      const startLine = test.lineNumber;
-      const startIndent = lines[startLine - 1].search(/\S/);
-      let endLine = startLine;
-
-      for (let i = startLine; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.trim() === '') continue;
-        const indent = line.search(/\S/);
-        if (indent <= startIndent && line.trim() !== '' && i > startLine - 1) {
-          break;
-        }
-        endLine = i + 1;
-      }
-
-      testBlockRanges.push({ start: startLine, end: endLine });
-    }
-  }
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1; // Monaco uses 1-based line numbers
-
-    // Skip test expressions
-    if (testLineNumbers.has(lineNumber)) {
-      continue;
-    }
-
-    // Skip lines inside test.verify blocks
-    const inTestBlock = testBlockRanges.some(r => lineNumber > r.start && lineNumber <= r.end);
-    if (inTestBlock) {
-      continue;
-    }
+    const trimmed = line.trimStart();
 
     if (isWatchExpressionLine(line)) {
       // Only include this watch expression if it's the target line
       if (lineNumber === targetLineNumber) {
         resultLines.push(line);
+      } else {
+        // Comment out other watch expressions
+        resultLines.push('-- ' + line);
       }
-      // Skip other watch expressions
+    } else if (trimmed.startsWith('test>')) {
+      // Comment out inline test expressions
+      resultLines.push('-- ' + line);
     } else {
-      // Include all non-watch, non-test lines (definitions, comments, etc.)
+      // Include all other lines (definitions, comments, test.verify blocks, etc.)
       resultLines.push(line);
     }
   }
@@ -139,9 +113,9 @@ export interface TestExpression {
 
 /**
  * Detect test expressions in code.
- * Matches:
- * - Lines starting with "test>" (inline tests)
- * - Lines containing "test.verify do" (property-based tests)
+ * Only matches lines starting with "test>" (runnable test expressions).
+ * Note: test.verify do lines are definitions that produce [test.Result] values,
+ * they're run via test> lines (e.g., "test> myTests").
  */
 export function detectTestExpressions(code: string): TestExpression[] {
   const lines = code.split('\n');
@@ -152,27 +126,18 @@ export function detectTestExpressions(code: string): TestExpression[] {
     const trimmed = line.trimStart();
 
     if (trimmed.startsWith('test>')) {
-      // Inline test: "test> square.tests.ex1 = ..."
+      // Inline test: "test> square.tests.ex1 = ..." or "test> myTests"
       const afterPrefix = trimmed.slice(5).trim();
-      const name = afterPrefix.split('=')[0].trim();
+      // Name is either before "=" or the whole expression if no "="
+      const name = afterPrefix.includes('=')
+        ? afterPrefix.split('=')[0].trim()
+        : afterPrefix.trim();
 
       tests.push({
         lineNumber: i + 1,
-        name,
+        name: name || 'test',
         fullLine: line,
         type: 'test>',
-      });
-    } else if (trimmed.includes('test.verify do')) {
-      // Property test: "name = test.verify do" or standalone "test.verify do"
-      // Try to extract name from "name = test.verify do"
-      const match = trimmed.match(/^(\S+)\s*=\s*test\.verify\s+do/);
-      const name = match ? match[1] : 'test.verify';
-
-      tests.push({
-        lineNumber: i + 1,
-        name,
-        fullLine: line,
-        type: 'test.verify',
       });
     }
   }
@@ -181,11 +146,12 @@ export function detectTestExpressions(code: string): TestExpression[] {
 }
 
 /**
- * Check if a specific line is a test expression.
+ * Check if a specific line is a runnable test expression (test> line).
+ * Note: test.verify do lines are definitions, not runnable - they're run via test> lines.
  */
 export function isTestExpressionLine(lineContent: string): boolean {
   const trimmed = lineContent.trimStart();
-  return trimmed.startsWith('test>') || trimmed.includes('test.verify do');
+  return trimmed.startsWith('test>');
 }
 
 /**
@@ -212,6 +178,9 @@ export function getTestName(lineContent: string): string {
  * Build code that includes all definitions but only a single test expression.
  * For test.verify blocks, includes the entire indented block.
  *
+ * Instead of removing lines (which can break Unison syntax), we comment out
+ * other test expressions and watch expressions.
+ *
  * @param fullCode The full editor content
  * @param targetLineNumber The line number of the test expression to include (1-based)
  * @returns Code with all definitions but only the target test expression
@@ -219,49 +188,26 @@ export function getTestName(lineContent: string): string {
 export function buildSingleTestCode(fullCode: string, targetLineNumber: number): string {
   const lines = fullCode.split('\n');
   const resultLines: string[] = [];
-  const tests = detectTestExpressions(fullCode);
-  const targetTest = tests.find((t) => t.lineNumber === targetLineNumber);
-
-  if (!targetTest) {
-    return fullCode; // Fallback
-  }
-
-  // Find the end of the target test block (for test.verify)
-  let targetEndLine = targetLineNumber;
-  if (targetTest.type === 'test.verify') {
-    // Find the end of the indented block
-    const startIndent = lines[targetLineNumber - 1].search(/\S/);
-    for (let i = targetLineNumber; i < lines.length; i++) {
-      const line = lines[i];
-      if (line.trim() === '') continue; // Skip empty lines
-      const indent = line.search(/\S/);
-      if (indent <= startIndent && line.trim() !== '') {
-        break; // Found a line at same or less indentation
-      }
-      targetEndLine = i + 1;
-    }
-  }
+  const trimmedTarget = lines[targetLineNumber - 1]?.trimStart() || '';
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1;
+    const trimmed = line.trimStart();
 
-    // Check if this line is part of a test
-    const testAtLine = tests.find((t) => t.lineNumber === lineNumber);
-
-    if (testAtLine) {
+    if (isWatchExpressionLine(line)) {
+      // Comment out watch expressions
+      resultLines.push('-- ' + line);
+    } else if (trimmed.startsWith('test>')) {
+      // Only include the target test> expression
       if (lineNumber === targetLineNumber) {
-        // Include target test
         resultLines.push(line);
+      } else {
+        // Comment out other test> expressions
+        resultLines.push('-- ' + line);
       }
-      // Skip other tests
-    } else if (lineNumber > targetLineNumber && lineNumber <= targetEndLine) {
-      // Include continuation of target test.verify block
-      resultLines.push(line);
-    } else if (isWatchExpressionLine(line)) {
-      // Skip watch expressions
     } else {
-      // Include definitions
+      // Include all other lines (definitions, comments, test.verify blocks, etc.)
       resultLines.push(line);
     }
   }
@@ -272,52 +218,24 @@ export function buildSingleTestCode(fullCode: string, targetLineNumber: number):
 /**
  * Build code that includes all definitions and ALL watch expressions, but NO tests.
  * Used for "Run All Watch Expressions".
+ *
+ * Instead of removing lines (which can break Unison syntax), we comment out test expressions.
  */
 export function buildAllWatchesCode(fullCode: string): string {
   const lines = fullCode.split('\n');
   const resultLines: string[] = [];
-  const tests = detectTestExpressions(fullCode);
-  const testLineNumbers = new Set(tests.map(t => t.lineNumber));
-
-  // Find test.verify block ranges to skip
-  const testBlockRanges: Array<{start: number, end: number}> = [];
-  for (const test of tests) {
-    if (test.type === 'test.verify') {
-      const startLine = test.lineNumber;
-      const startIndent = lines[startLine - 1].search(/\S/);
-      let endLine = startLine;
-
-      for (let i = startLine; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.trim() === '') continue;
-        const indent = line.search(/\S/);
-        if (indent <= startIndent && line.trim() !== '' && i > startLine - 1) {
-          break;
-        }
-        endLine = i + 1;
-      }
-
-      testBlockRanges.push({ start: startLine, end: endLine });
-    }
-  }
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const lineNumber = i + 1;
+    const trimmed = line.trimStart();
 
-    // Skip test expressions
-    if (testLineNumbers.has(lineNumber)) {
-      continue;
+    if (trimmed.startsWith('test>')) {
+      // Comment out inline test expressions
+      resultLines.push('-- ' + line);
+    } else {
+      // Include everything else (definitions, watch expressions, test.verify blocks as definitions)
+      resultLines.push(line);
     }
-
-    // Skip lines inside test.verify blocks
-    const inTestBlock = testBlockRanges.some(r => lineNumber > r.start && lineNumber <= r.end);
-    if (inTestBlock) {
-      continue;
-    }
-
-    // Include everything else (definitions and watch expressions)
-    resultLines.push(line);
   }
 
   return resultLines.join('\n');
@@ -326,6 +244,8 @@ export function buildAllWatchesCode(fullCode: string): string {
 /**
  * Build code that includes all definitions and ALL tests, but NO watch expressions.
  * Used for "Run All Tests".
+ *
+ * Instead of removing lines (which can break Unison syntax), we comment out watch expressions.
  */
 export function buildAllTestsCode(fullCode: string): string {
   const lines = fullCode.split('\n');
@@ -334,13 +254,13 @@ export function buildAllTestsCode(fullCode: string): string {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Skip watch expressions
     if (isWatchExpressionLine(line)) {
-      continue;
+      // Comment out watch expressions
+      resultLines.push('-- ' + line);
+    } else {
+      // Include everything else (definitions and tests)
+      resultLines.push(line);
     }
-
-    // Include everything else (definitions and tests)
-    resultLines.push(line);
   }
 
   return resultLines.join('\n');

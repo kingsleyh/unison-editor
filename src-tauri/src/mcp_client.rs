@@ -59,6 +59,16 @@ pub struct WatchResult {
     pub line_number: usize,
 }
 
+/// Result of running an IO function
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunFunctionResult {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub output: String,
+    pub errors: Vec<String>,
+}
+
 /// MCP client that manages a `ucm mcp` subprocess
 pub struct MCPClient {
     process: Child,
@@ -392,6 +402,73 @@ impl MCPClient {
                 output,
                 errors,
                 test_results,
+            })
+        } else {
+            Err("Invalid MCP response: missing result".to_string())
+        }
+    }
+
+    /// Run an IO function
+    ///
+    /// This calls the "run" MCP tool to execute a function that has IO and Exception abilities.
+    /// The function must already be saved in the codebase.
+    pub fn run_function(
+        &mut self,
+        function_name: &str,
+        project_name: &str,
+        branch_name: &str,
+        args: Vec<String>,
+    ) -> Result<RunFunctionResult, String> {
+        let arguments = json!({
+            "projectContext": {
+                "projectName": project_name,
+                "branchName": branch_name
+            },
+            "mainFunctionName": function_name,
+            "args": args
+        });
+
+        let response = self.call_tool("run", arguments)?;
+
+        // Parse the response
+        if let Some(error) = response.get("error") {
+            return Ok(RunFunctionResult {
+                success: false,
+                stdout: String::new(),
+                stderr: String::new(),
+                output: String::new(),
+                errors: vec![error["message"]
+                    .as_str()
+                    .unwrap_or("Unknown error")
+                    .to_string()],
+            });
+        }
+
+        // Extract result content
+        if let Some(result) = response.get("result") {
+            let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+
+            // Extract text content from the result
+            let raw_output = result
+                .get("content")
+                .and_then(|c| c.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+
+            // Parse the output to extract stdout, stderr, errors
+            let (stdout, stderr, output, errors) = parse_run_function_output(&raw_output, is_error);
+
+            Ok(RunFunctionResult {
+                success: !is_error && errors.is_empty(),
+                stdout,
+                stderr,
+                output,
+                errors,
             })
         } else {
             Err("Invalid MCP response: missing result".to_string())
@@ -891,4 +968,66 @@ fn parse_run_tests_line(line: &str, passed: bool) -> Option<TestResult> {
         passed,
         message: if passed { "Passed".to_string() } else { "Failed".to_string() },
     })
+}
+
+/// Parse the output from the run MCP tool
+/// The MCP run tool returns JSON with stdout, stderr, outputMessages, errorMessages
+fn parse_run_function_output(raw_output: &str, is_error: bool) -> (String, String, String, Vec<String>) {
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let mut errors = Vec::new();
+    let mut output_messages = Vec::new();
+
+    // Try to parse as JSON first
+    if let Ok(json) = serde_json::from_str::<Value>(raw_output) {
+        // Extract stdout
+        if let Some(s) = json.get("stdout").and_then(|v| v.as_str()) {
+            stdout = s.to_string();
+        }
+
+        // Extract stderr
+        if let Some(s) = json.get("stderr").and_then(|v| v.as_str()) {
+            stderr = s.to_string();
+        }
+
+        // Extract error messages
+        if let Some(error_msgs) = json.get("errorMessages").and_then(|v| v.as_array()) {
+            for msg in error_msgs {
+                if let Some(s) = msg.as_str() {
+                    if !s.is_empty() {
+                        errors.push(s.to_string());
+                    }
+                }
+            }
+        }
+
+        // Extract output messages
+        if let Some(output_msgs) = json.get("outputMessages").and_then(|v| v.as_array()) {
+            for msg in output_msgs {
+                if let Some(s) = msg.as_str() {
+                    if !s.is_empty() && !s.contains("Loading") && s != "Done." {
+                        output_messages.push(s.to_string());
+                    }
+                }
+            }
+        }
+
+        // Build combined output
+        let output = if !stdout.is_empty() {
+            stdout.clone()
+        } else if !output_messages.is_empty() {
+            output_messages.join("\n")
+        } else {
+            "Function executed successfully".to_string()
+        };
+
+        (stdout, stderr, output, errors)
+    } else {
+        // Not JSON, return as-is
+        if is_error {
+            (String::new(), raw_output.to_string(), raw_output.to_string(), vec![raw_output.to_string()])
+        } else {
+            (raw_output.to_string(), String::new(), raw_output.to_string(), vec![])
+        }
+    }
 }

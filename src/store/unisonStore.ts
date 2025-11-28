@@ -83,6 +83,9 @@ interface UnisonState {
   } | null;
   runPaneCollapsed: boolean;
 
+  // Auto-run state (persisted to localStorage)
+  autoRun: boolean;
+
   // Definition cards state
   definitionCards: DefinitionCardState[];
   selectedCardId: string | null;
@@ -117,6 +120,9 @@ interface UnisonState {
   setRunOutput: (output: { type: 'success' | 'error' | 'info'; message: string }) => void;
   clearRunOutput: () => void;
   setRunPaneCollapsed: (collapsed: boolean) => void;
+
+  // Auto-run actions
+  setAutoRun: (enabled: boolean) => void;
 
   // Definition cards actions
   setDefinitionCards: (cards: DefinitionCardState[]) => void;
@@ -153,6 +159,9 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   // Run pane state
   runOutput: null,
   runPaneCollapsed: true,
+
+  // Auto-run state (load from localStorage)
+  autoRun: localStorage.getItem('autoRun') === 'true',
 
   // Definition cards state
   definitionCards: [],
@@ -253,6 +262,12 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   clearRunOutput: () => set({ runOutput: null }),
 
   setRunPaneCollapsed: (collapsed) => set({ runPaneCollapsed: collapsed }),
+
+  // Auto-run actions
+  setAutoRun: (enabled) => {
+    localStorage.setItem('autoRun', enabled.toString());
+    set({ autoRun: enabled });
+  },
 
   // Definition cards actions
   setDefinitionCards: (cards) => set({ definitionCards: cards }),

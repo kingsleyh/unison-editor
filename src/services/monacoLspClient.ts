@@ -1,6 +1,28 @@
 import * as monaco from 'monaco-editor';
 
 /**
+ * LSP Diagnostic (from server)
+ */
+export interface LspDiagnostic {
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  message: string;
+  severity?: number; // 1 = Error, 2 = Warning, 3 = Info, 4 = Hint
+  source?: string;
+  code?: string | number;
+}
+
+/**
+ * Published diagnostics from LSP server
+ */
+export interface PublishDiagnosticsParams {
+  uri: string;
+  diagnostics: LspDiagnostic[];
+}
+
+/**
  * Simple LSP Client for Unison using WebSocket
  *
  * Connects Monaco Editor to the Unison Language Server via WebSocket proxy.
@@ -14,6 +36,7 @@ export class MonacoLspClient {
   private messageId = 0;
   private pendingRequests = new Map<number, { resolve: (value: any) => void; reject: (reason: any) => void }>();
   private connectionCallbacks: ((connected: boolean) => void)[] = [];
+  private diagnosticsCallbacks: ((params: PublishDiagnosticsParams) => void)[] = [];
 
   /**
    * Connect to the LSP server via WebSocket proxy
@@ -199,10 +222,36 @@ export class MonacoLspClient {
       // Handle server notifications
       if (message.method) {
         console.log(`LSP notification: ${message.method}`, message.params);
+
+        // Handle publishDiagnostics notifications
+        if (message.method === 'textDocument/publishDiagnostics') {
+          this.handleDiagnostics(message.params as PublishDiagnosticsParams);
+        }
       }
     } catch (error) {
       console.error('Failed to parse LSP message:', error);
     }
+  }
+
+  /**
+   * Handle incoming diagnostics from LSP server
+   */
+  private handleDiagnostics(params: PublishDiagnosticsParams) {
+    console.log('[LSP Client] Received diagnostics:', params.uri, params.diagnostics.length, 'issues');
+    this.diagnosticsCallbacks.forEach(cb => cb(params));
+  }
+
+  /**
+   * Subscribe to diagnostics updates
+   */
+  onDiagnostics(callback: (params: PublishDiagnosticsParams) => void): () => void {
+    this.diagnosticsCallbacks.push(callback);
+    return () => {
+      const index = this.diagnosticsCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.diagnosticsCallbacks.splice(index, 1);
+      }
+    };
   }
 
   /**

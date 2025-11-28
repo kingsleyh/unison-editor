@@ -54,25 +54,45 @@ export function RunPane({ isCollapsed, onToggleCollapse }: RunPaneProps) {
         {runOutput ? (
           // Check if this is a watch expression result (contains ⇒)
           runOutput.message.includes('⇒') ? (
-            <div className="watch-results">
-              {runOutput.message.split('\n\n').map((block, i) => (
-                <div key={i} className="watch-result-block">
-                  {block.split('\n').map((line, j) => (
-                    <div
-                      key={j}
-                      className={
-                        line.startsWith('⇒')
-                          ? 'watch-result-value'
-                          : line.startsWith('>')
-                            ? 'watch-expression-line'
-                            : ''
-                      }
-                    >
-                      {line}
-                    </div>
-                  ))}
-                </div>
-              ))}
+            <div className={`watch-results ${runOutput.type}`}>
+              {runOutput.message.split('\n\n').map((block, i) => {
+                // Determine block type based on content
+                const isTestBlock = block.startsWith('Tests:') || block.includes('✅') || block.includes('🚫');
+                const isErrorBlock = block.startsWith('⚠️');
+                const isWatchBlock = block.startsWith('>');
+
+                // Determine if this specific block has failures
+                const blockHasFailure = block.includes('🚫');
+
+                // Only test blocks with failures get 'error', error blocks get 'error'
+                // Watch blocks and passing test blocks get 'success'
+                const blockType = isErrorBlock ? 'error' :
+                                  isTestBlock && blockHasFailure ? 'error' :
+                                  'success';
+
+                return (
+                  <div key={i} className={`watch-result-block ${blockType}`}>
+                    {block.split('\n').map((line, j) => (
+                      <div
+                        key={j}
+                        className={
+                          line.startsWith('⇒')
+                            ? 'watch-result-value'
+                            : line.startsWith('>')
+                              ? 'watch-expression-line'
+                              : line.includes('🚫')
+                                ? 'test-failed-line'
+                                : line.includes('✅')
+                                  ? 'test-passed-line'
+                                  : ''
+                        }
+                      >
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className={`run-pane-message ${runOutput.type}`}>

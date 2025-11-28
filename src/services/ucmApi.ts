@@ -42,6 +42,14 @@ export interface RunTestsResult {
   testResults: TestResult[];
 }
 
+export interface RunFunctionResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  output: string;
+  errors: string[];
+}
+
 /**
  * Client for interacting with UCM's HTTP API via Tauri commands
  */
@@ -197,6 +205,26 @@ export class UCMApiClient {
       projectName,
       branchName,
       subnamespace,
+    });
+  }
+
+  /**
+   * Run an IO function
+   *
+   * Runs a function that has IO and Exception abilities.
+   * The function must already be saved in the codebase.
+   */
+  async runFunction(
+    projectName: string,
+    branchName: string,
+    functionName: string,
+    args: string[] = []
+  ): Promise<RunFunctionResult> {
+    return invoke<RunFunctionResult>('ucm_run', {
+      functionName,
+      projectName,
+      branchName,
+      args,
     });
   }
 }

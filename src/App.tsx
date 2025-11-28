@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Editor } from './components/Editor';
+import { Editor, type DiagnosticCount } from './components/Editor';
 import { ProjectBranchSelector } from './components/ProjectBranchSelector';
 import { Navigation } from './components/Navigation';
 import { DefinitionStack } from './components/DefinitionStack';
@@ -43,8 +43,12 @@ function App() {
   const [navPanelCollapsed, setNavPanelCollapsed] = useState(false);
   const [termsPanelCollapsed, setTermsPanelCollapsed] = useState(true);
 
+  // Diagnostic count from the editor (for status indicator)
+  const [diagnosticCount, setDiagnosticCount] = useState<DiagnosticCount>({ errors: 0, warnings: 0 });
+
   const client = getUCMApiClient();
   const saveTimeoutRef = useRef<number | null>(null);
+  const autoRunTimeoutRef = useRef<number | null>(null);
 
   // Initialize theme system on mount
   useEffect(() => {
@@ -55,6 +59,31 @@ function App() {
   // Check UCM connection on mount
   useEffect(() => {
     checkConnection();
+  }, []);
+
+  // Run auto-run immediately when autoRun is toggled on OR when tab changes while autoRun is enabled
+  useEffect(() => {
+    const unsubscribe = useUnisonStore.subscribe(
+      (state, prevState) => {
+        // Check if autoRun was just turned on (false -> true)
+        if (state.autoRun && !prevState.autoRun) {
+          const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+          if (activeTab?.content) {
+            handleAutoRun(activeTab.content);
+          }
+        }
+
+        // Check if tab changed while autoRun is enabled
+        if (state.autoRun && state.activeTabId !== prevState.activeTabId && state.activeTabId) {
+          const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+          if (activeTab?.content) {
+            handleAutoRun(activeTab.content);
+          }
+        }
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   async function checkConnection() {
@@ -431,6 +460,218 @@ function App() {
   }
 
   /**
+   * Handle auto-run when content changes and autoRun is enabled.
+   * Runs both tests and watches, combining output.
+   */
+  async function handleAutoRun(content: string) {
+    const { currentProject, currentBranch, setRunOutput, setRunPaneCollapsed, autoRun } = useUnisonStore.getState();
+
+    if (!autoRun || !currentProject || !currentBranch) {
+      return;
+    }
+
+    const watches = detectWatchExpressions(content);
+    const tests = detectTestExpressions(content);
+
+    // Auto-expand output pane
+    setRunPaneCollapsed(false);
+    setRunOutput({ type: 'info', message: 'Auto-running...' });
+
+    try {
+      // Run typecheck with ALL expressions (both tests and watches)
+      const result = await client.typecheckCode(
+        currentProject.name,
+        currentBranch.name,
+        content // Send full content - UCM will evaluate all
+      );
+
+      // Build combined output
+      const outputParts: string[] = [];
+
+      // 1. Handle errors (inline at top if any)
+      if (result.errors.length > 0) {
+        outputParts.push(`⚠️ Errors:\n${result.errors.join('\n')}`);
+      }
+
+      // 2. Handle test results
+      if (result.testResults && result.testResults.length > 0) {
+        const passed = result.testResults.filter(t => t.passed).length;
+        const failed = result.testResults.filter(t => !t.passed).length;
+        const testOutput = result.testResults
+          .map(t => `${t.passed ? '✅' : '🚫'} ${t.name}`)
+          .join('\n');
+        outputParts.push(`Tests: ${passed} passed, ${failed} failed\n${testOutput}`);
+      }
+
+      // 3. Handle watch results
+      if (result.watchResults && result.watchResults.length > 0) {
+        const watchOutput = result.watchResults
+          .map(w => `> ${w.expression}\n⇒ ${w.result}`)
+          .join('\n\n');
+        outputParts.push(watchOutput);
+      }
+
+      // Determine overall type based on results
+      const hasErrors = result.errors.length > 0;
+      const hasFailedTests = result.testResults?.some(t => !t.passed);
+      const outputType = hasErrors || hasFailedTests ? 'error' : 'success';
+
+      if (outputParts.length > 0) {
+        setRunOutput({
+          type: outputType,
+          message: outputParts.join('\n\n'),
+        });
+      } else if (result.output) {
+        // Fallback to raw output
+        setRunOutput({ type: 'info', message: result.output });
+      } else {
+        setRunOutput({ type: 'success', message: '✓ No issues found' });
+      }
+    } catch (err) {
+      setRunOutput({
+        type: 'error',
+        message: `Auto-run failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  /**
+   * Handle manual typecheck of the current file.
+   * Similar to handleAutoRun but triggered manually via button.
+   */
+  async function handleTypecheckAll() {
+    const activeTab = getActiveTab();
+    if (!activeTab?.content) {
+      return;
+    }
+
+    const { currentProject, currentBranch, setRunOutput, setRunPaneCollapsed } = useUnisonStore.getState();
+
+    if (!currentProject || !currentBranch) {
+      setRunOutput({
+        type: 'error',
+        message: 'No project/branch selected. Please select a project first.',
+      });
+      setRunPaneCollapsed(false);
+      return;
+    }
+
+    const content = activeTab.content;
+
+    setRunPaneCollapsed(false);
+    setRunOutput({ type: 'info', message: 'Typechecking...' });
+
+    try {
+      const result = await client.typecheckCode(
+        currentProject.name,
+        currentBranch.name,
+        content
+      );
+
+      const outputParts: string[] = [];
+
+      if (result.errors.length > 0) {
+        outputParts.push(`⚠️ Errors:\n${result.errors.join('\n')}`);
+      }
+
+      if (result.testResults && result.testResults.length > 0) {
+        const passed = result.testResults.filter(t => t.passed).length;
+        const failed = result.testResults.filter(t => !t.passed).length;
+        const testOutput = result.testResults
+          .map(t => `${t.passed ? '✅' : '🚫'} ${t.name}`)
+          .join('\n');
+        outputParts.push(`Tests: ${passed} passed, ${failed} failed\n${testOutput}`);
+      }
+
+      if (result.watchResults && result.watchResults.length > 0) {
+        const watchOutput = result.watchResults
+          .map(w => `> ${w.expression}\n⇒ ${w.result}`)
+          .join('\n\n');
+        outputParts.push(watchOutput);
+      }
+
+      const hasErrors = result.errors.length > 0;
+      const hasFailedTests = result.testResults?.some(t => !t.passed);
+      const outputType = hasErrors || hasFailedTests ? 'error' : 'success';
+
+      if (outputParts.length > 0) {
+        setRunOutput({
+          type: outputType,
+          message: outputParts.join('\n\n'),
+        });
+      } else if (result.output) {
+        setRunOutput({ type: 'info', message: result.output });
+      } else {
+        setRunOutput({ type: 'success', message: '✓ Typecheck passed' });
+      }
+    } catch (err) {
+      setRunOutput({
+        type: 'error',
+        message: `Typecheck failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  /**
+   * Handle running an IO function from the editor gutter.
+   * Executes a function that has IO and Exception abilities.
+   */
+  async function handleRunFunction(functionName: string) {
+    const { currentProject, currentBranch, setRunOutput, setRunPaneCollapsed } = useUnisonStore.getState();
+
+    if (!currentProject || !currentBranch) {
+      setRunOutput({
+        type: 'error',
+        message: 'No project/branch selected. Please select a project first.',
+      });
+      setRunPaneCollapsed(false);
+      return;
+    }
+
+    // Auto-expand output pane
+    setRunPaneCollapsed(false);
+
+    // Show loading state
+    setRunOutput({ type: 'info', message: `Running ${functionName}...` });
+
+    try {
+      const result = await client.runFunction(
+        currentProject.name,
+        currentBranch.name,
+        functionName
+      );
+
+      if (result.errors.length > 0) {
+        setRunOutput({
+          type: 'error',
+          message: result.errors.join('\n'),
+        });
+      } else if (result.output) {
+        // Show stdout/output from the function
+        setRunOutput({
+          type: 'success',
+          message: result.output,
+        });
+      } else if (result.stdout) {
+        setRunOutput({
+          type: 'success',
+          message: result.stdout,
+        });
+      } else {
+        setRunOutput({
+          type: 'success',
+          message: `${functionName} completed successfully`,
+        });
+      }
+    } catch (err) {
+      setRunOutput({
+        type: 'error',
+        message: `Failed to run ${functionName}: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  /**
    * Handle reveal in tree request from DefinitionStack.
    * This is called after definition resolution to ensure we have the correct FQN.
    */
@@ -561,6 +802,19 @@ function App() {
             await saveCurrentFile();
           }, 500); // 500ms debounce
         }
+
+        // Clear existing auto-run timeout
+        if (autoRunTimeoutRef.current) {
+          clearTimeout(autoRunTimeoutRef.current);
+        }
+
+        // Debounced auto-run (500ms after typing stops)
+        const { autoRun } = useUnisonStore.getState();
+        if (autoRun && isDirty) {
+          autoRunTimeoutRef.current = window.setTimeout(async () => {
+            await handleAutoRun(value);
+          }, 500);
+        }
       }
     }
   }
@@ -650,7 +904,7 @@ function App() {
                         onTabClick={setActiveTab}
                         onTabClose={removeTab}
                       />
-                      <CodebaseActions onRunAllWatchExpressions={handleRunAllWatchExpressions} onRunAllTestExpressions={handleRunAllTestExpressions} />
+                      <CodebaseActions onTypecheckAll={handleTypecheckAll} onRunAllWatchExpressions={handleRunAllWatchExpressions} onRunAllTestExpressions={handleRunAllTestExpressions} diagnosticCount={diagnosticCount} />
                     </div>
 
                     <VerticalResizableSplitter
@@ -671,6 +925,8 @@ function App() {
                               onDefinitionClick={handleOpenDefinition}
                               onRunWatchExpression={handleRunWatchExpression}
                               onRunTestExpression={handleRunTestExpression}
+                              onRunFunction={handleRunFunction}
+                              onDiagnosticsChange={setDiagnosticCount}
                             />
                           ) : (
                             <div className="no-editor">

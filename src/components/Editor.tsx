@@ -2,7 +2,7 @@ import { Editor as MonacoEditor } from '@monaco-editor/react';
 import { useRef, useEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
 import { registerUnisonLanguage } from '../editor/unisonLanguage';
-import { getMonacoLspClient } from '../services/monacoLspClient';
+import { getMonacoLspClient, type PublishDiagnosticsParams, type LspDiagnostic } from '../services/monacoLspClient';
 import { registerUCMProviders, setOnDefinitionClick, setMonacoEditor, triggerDefinitionClick } from '../services/monacoUcmProviders';
 import { ucmContext } from '../services/ucmContext';
 import {
@@ -11,6 +11,16 @@ import {
   detectTestExpressions,
   isTestExpressionLine,
 } from '../services/watchExpressionService';
+import {
+  detectRunnableFunctions,
+  isRunnableFunctionLine,
+  getRunnableFunctionName,
+} from '../services/runnableFunctionService';
+
+export interface DiagnosticCount {
+  errors: number;
+  warnings: number;
+}
 
 interface EditorProps {
   value: string;
@@ -21,6 +31,42 @@ interface EditorProps {
   onDefinitionClick?: (name: string, type: 'term' | 'type') => void;
   onRunWatchExpression?: (lineNumber: number, fullCode: string) => void;
   onRunTestExpression?: (lineNumber: number, fullCode: string) => void;
+  onRunFunction?: (functionName: string) => void;
+  onDiagnosticsChange?: (diagnostics: DiagnosticCount) => void;
+}
+
+/**
+ * Convert LSP severity to Monaco MarkerSeverity
+ */
+function lspSeverityToMonaco(severity?: number): Monaco.MarkerSeverity {
+  // Monaco MarkerSeverity: 1=Hint, 2=Info, 4=Warning, 8=Error
+  // LSP DiagnosticSeverity: 1=Error, 2=Warning, 3=Info, 4=Hint
+  switch (severity) {
+    case 1: return 8; // Error
+    case 2: return 4; // Warning
+    case 3: return 2; // Info
+    case 4: return 1; // Hint
+    default: return 8; // Default to Error
+  }
+}
+
+/**
+ * Convert LSP diagnostics to Monaco markers
+ */
+function diagnosticsToMarkers(
+  diagnostics: LspDiagnostic[],
+  monaco: typeof Monaco
+): Monaco.editor.IMarkerData[] {
+  return diagnostics.map((diag) => ({
+    severity: lspSeverityToMonaco(diag.severity),
+    message: diag.message,
+    startLineNumber: diag.range.start.line + 1, // LSP is 0-based, Monaco is 1-based
+    startColumn: diag.range.start.character + 1,
+    endLineNumber: diag.range.end.line + 1,
+    endColumn: diag.range.end.character + 1,
+    source: diag.source || 'unison',
+    code: diag.code?.toString(),
+  }));
 }
 
 /**
@@ -39,12 +85,15 @@ export function Editor({
   onDefinitionClick,
   onRunWatchExpression,
   onRunTestExpression,
+  onRunFunction,
+  onDiagnosticsChange,
 }: EditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
   const documentUriRef = useRef<string | null>(null);
   const watchDecorationsRef = useRef<string[]>([]);
   const testDecorationsRef = useRef<string[]>([]);
+  const runnableFunctionDecorationsRef = useRef<string[]>([]);
 
   const lspClient = getMonacoLspClient();
 
@@ -55,6 +104,10 @@ export function Editor({
   // Store onRunTestExpression in a ref so we can use it in event handlers
   const onRunTestExpressionRef = useRef(onRunTestExpression);
   onRunTestExpressionRef.current = onRunTestExpression;
+
+  // Store onRunFunction in a ref so we can use it in event handlers
+  const onRunFunctionRef = useRef(onRunFunction);
+  onRunFunctionRef.current = onRunFunction;
 
   // Initialize UCM context (once per app)
   useEffect(() => {
@@ -96,6 +149,45 @@ export function Editor({
     if (!lspClient.connected) {
       initLSP();
     }
+  }, [lspClient]);
+
+  // Subscribe to LSP diagnostics
+  useEffect(() => {
+    const unsubscribe = lspClient.onDiagnostics((params: PublishDiagnosticsParams) => {
+      const editor = editorRef.current;
+      const monaco = monacoRef.current;
+      const currentUri = documentUriRef.current;
+
+      if (!editor || !monaco || !currentUri) return;
+
+      // Only apply diagnostics for the current document
+      if (params.uri !== currentUri) {
+        console.log('[Editor] Ignoring diagnostics for different URI:', params.uri, 'vs', currentUri);
+        return;
+      }
+
+      const model = editor.getModel();
+      if (!model) return;
+
+      // Convert LSP diagnostics to Monaco markers
+      const markers = diagnosticsToMarkers(params.diagnostics, monaco);
+      monaco.editor.setModelMarkers(model, 'unison-lsp', markers);
+
+      // Count errors and warnings for the status indicator
+      const errors = params.diagnostics.filter(d => d.severity === 1).length;
+      const warnings = params.diagnostics.filter(d => d.severity === 2).length;
+
+      // Notify parent component
+      if (onDiagnosticsChange) {
+        onDiagnosticsChange({ errors, warnings });
+      }
+
+      console.log(`[Editor] Applied ${markers.length} diagnostics (${errors} errors, ${warnings} warnings)`);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [lspClient]);
 
   // Store onDefinitionClick in a ref so we can use it in handleEditorWillMount
@@ -154,6 +246,13 @@ export function Editor({
               if (onRunTestExpressionRef.current) {
                 onRunTestExpressionRef.current(lineNumber, model.getValue());
               }
+            } else if (isRunnableFunctionLine(lineContent)) {
+              // Run this IO function
+              const functionName = getRunnableFunctionName(lineContent);
+              console.log('[Editor] Runnable function run button clicked, function:', functionName);
+              if (onRunFunctionRef.current && functionName) {
+                onRunFunctionRef.current(functionName);
+              }
             }
           }
         }
@@ -171,7 +270,7 @@ export function Editor({
       }
     });
 
-    // Update watch and test expression decorations on content change
+    // Update watch, test, and runnable function decorations on content change
     const updateDecorations = () => {
       const model = editor.getModel();
       if (!model) return;
@@ -179,6 +278,7 @@ export function Editor({
       const content = model.getValue();
       const watchExpressions = detectWatchExpressions(content);
       const testExpressions = detectTestExpressions(content);
+      const runnableFunctions = detectRunnableFunctions(content);
 
       // Create decorations for each watch expression line
       const watchDecorations = watchExpressions.map((watch) => ({
@@ -198,6 +298,15 @@ export function Editor({
         },
       }));
 
+      // Create decorations for each runnable IO function
+      const runnableFunctionDecorations = runnableFunctions.map((func) => ({
+        range: new monaco.Range(func.lineNumber, 1, func.lineNumber, 1),
+        options: {
+          glyphMarginClassName: 'runnable-function-run-button',
+          glyphMarginHoverMessage: { value: `Run function: ${func.name} (must be saved to codebase first)` },
+        },
+      }));
+
       // Apply watch decorations
       watchDecorationsRef.current = editor.deltaDecorations(
         watchDecorationsRef.current,
@@ -209,14 +318,40 @@ export function Editor({
         testDecorationsRef.current,
         testDecorations
       );
+
+      // Apply runnable function decorations
+      runnableFunctionDecorationsRef.current = editor.deltaDecorations(
+        runnableFunctionDecorationsRef.current,
+        runnableFunctionDecorations
+      );
     };
 
     // Update decorations initially
     updateDecorations();
 
-    // Update decorations when content changes
+    // Track version for LSP didChange
+    let documentVersion = 1;
+
+    // Update decorations when content changes and notify LSP
     editor.onDidChangeModelContent(() => {
       updateDecorations();
+
+      // Send didChange to LSP for live diagnostics
+      if (lspClient.connected && documentUriRef.current) {
+        const model = editor.getModel();
+        if (model) {
+          documentVersion++;
+          lspClient.sendLspNotification('textDocument/didChange', {
+            textDocument: {
+              uri: documentUriRef.current,
+              version: documentVersion,
+            },
+            contentChanges: [
+              { text: model.getValue() }, // Full document sync
+            ],
+          });
+        }
+      }
     });
 
     // Send textDocument/didOpen notification to LSP server for diagnostics

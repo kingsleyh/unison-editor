@@ -56,6 +56,7 @@ pub fn run() {
       commands::ucm_update,
       commands::ucm_typecheck,
       commands::ucm_run_tests,
+      commands::ucm_run,
       commands::lsp_connect,
       commands::lsp_disconnect,
       commands::lsp_send_request,

@@ -10,13 +10,20 @@ interface UpdateResult {
   errors: string[];
 }
 
-interface CodebaseActionsProps {
-  onSuccess?: () => void;
-  onRunAllWatchExpressions?: () => void;
-  onRunAllTestExpressions?: () => void;
+interface DiagnosticCount {
+  errors: number;
+  warnings: number;
 }
 
-export function CodebaseActions({ onSuccess, onRunAllWatchExpressions, onRunAllTestExpressions }: CodebaseActionsProps) {
+interface CodebaseActionsProps {
+  onSuccess?: () => void;
+  onTypecheckAll?: () => void;
+  onRunAllWatchExpressions?: () => void;
+  onRunAllTestExpressions?: () => void;
+  diagnosticCount?: DiagnosticCount;
+}
+
+export function CodebaseActions({ onSuccess, onTypecheckAll, onRunAllWatchExpressions, onRunAllTestExpressions, diagnosticCount }: CodebaseActionsProps) {
   const {
     activeTabId,
     getActiveTab,
@@ -26,11 +33,14 @@ export function CodebaseActions({ onSuccess, onRunAllWatchExpressions, onRunAllT
     refreshDefinitions,
     setRunOutput,
     setRunPaneCollapsed,
+    autoRun,
+    setAutoRun,
   } = useUnisonStore();
   const [isSaving, setIsSaving] = useState(false);
 
   const activeTab = getActiveTab();
   const hasContent = !!activeTab?.content?.trim();
+  const isUnisonFile = activeTab?.title?.endsWith('.u') || activeTab?.filePath?.endsWith('.u') || activeTab?.language === 'unison';
   const hasWatchExpressions = activeTab?.content
     ? detectWatchExpressions(activeTab.content).length > 0
     : false;
@@ -121,28 +131,78 @@ export function CodebaseActions({ onSuccess, onRunAllWatchExpressions, onRunAllT
     return null;
   }
 
+  const hasProblems = diagnosticCount && (diagnosticCount.errors > 0 || diagnosticCount.warnings > 0);
+
   return (
     <div className="codebase-actions">
-      {hasWatchExpressions && (
-        <button
-          className="codebase-action-btn run-all-watch-btn"
-          onClick={onRunAllWatchExpressions}
-          disabled={!currentProject || !currentBranch}
-          title="Run all watch expressions"
-        >
-          ▶▶
-        </button>
+      {/* Auto-run slider toggle - show for all .u files */}
+      {isUnisonFile && (
+        <label className="auto-run-slider" title="Auto-run typecheck on file changes">
+          <input
+            type="checkbox"
+            checked={autoRun}
+            onChange={(e) => setAutoRun(e.target.checked)}
+          />
+          <span className="slider"></span>
+          <span className="auto-run-label">Auto</span>
+        </label>
       )}
-      {hasTestExpressions && (
-        <button
-          className="codebase-action-btn run-all-tests-btn"
-          onClick={onRunAllTestExpressions}
-          disabled={!currentProject || !currentBranch}
-          title="Run all tests"
-        >
-          ▶▶
-        </button>
+      {/* Only show run buttons when auto-run is off */}
+      {!autoRun && (
+        <>
+          {/* Typecheck All button - blue */}
+          {isUnisonFile && (
+            <button
+              className="codebase-action-btn typecheck-all-btn"
+              onClick={onTypecheckAll}
+              disabled={!currentProject || !currentBranch || !hasContent}
+              title="Typecheck file"
+            >
+              ▶▶
+            </button>
+          )}
+          {/* Run All Tests button - green */}
+          {hasTestExpressions && (
+            <button
+              className="codebase-action-btn run-all-tests-btn"
+              onClick={onRunAllTestExpressions}
+              disabled={!currentProject || !currentBranch}
+              title="Run all tests"
+            >
+              ▶▶
+            </button>
+          )}
+          {/* Run All Watches button - gold */}
+          {hasWatchExpressions && (
+            <button
+              className="codebase-action-btn run-all-watch-btn"
+              onClick={onRunAllWatchExpressions}
+              disabled={!currentProject || !currentBranch}
+              title="Run all watch expressions"
+            >
+              ▶▶
+            </button>
+          )}
+        </>
       )}
+      {/* Status indicator - to the left of Save to Codebase */}
+      <div className={`editor-status-indicator ${hasProblems ? 'has-problems' : 'all-good'}`}>
+        {hasProblems ? (
+          <>
+            <span className="status-icon">✗</span>
+            <span className="status-text">
+              {diagnosticCount.errors > 0 && `${diagnosticCount.errors} error${diagnosticCount.errors > 1 ? 's' : ''}`}
+              {diagnosticCount.errors > 0 && diagnosticCount.warnings > 0 && ', '}
+              {diagnosticCount.warnings > 0 && `${diagnosticCount.warnings} warning${diagnosticCount.warnings > 1 ? 's' : ''}`}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="status-icon">✓</span>
+            <span className="status-text">OK</span>
+          </>
+        )}
+      </div>
       <button
         className="codebase-action-btn update-btn"
         onClick={handleSaveToCodebase}
