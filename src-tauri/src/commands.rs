@@ -100,10 +100,33 @@ pub async fn get_definition(
         client_guard.as_ref().ok_or("UCM client not initialized")?.clone()
     };
 
+    // Use suffixifyBindings=true for display (shorter, more readable names)
     client
-        .get_definition(&projectName, &branchName, &name)
+        .get_definition(&projectName, &branchName, &name, true)
         .await
         .map_err(|e| format!("Failed to get definition: {}", e))
+}
+
+/// Get definition with fully qualified names (for add-to-scratch functionality)
+/// Uses suffixifyBindings=false to get FQN source suitable for scratch files
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn get_definition_fqn(
+    projectName: String,
+    branchName: String,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<Option<DefinitionSummary>, String> {
+    let client = {
+        let client_guard = state.ucm_client.lock().unwrap();
+        client_guard.as_ref().ok_or("UCM client not initialized")?.clone()
+    };
+
+    // Use suffixifyBindings=false for FQN source (for scratch files)
+    client
+        .get_definition(&projectName, &branchName, &name, false)
+        .await
+        .map_err(|e| format!("Failed to get definition with FQN: {}", e))
 }
 
 #[tauri::command]
@@ -441,6 +464,29 @@ pub fn ucm_run(
 
     // Call the run tool
     mcp_client.run_function(&functionName, &projectName, &branchName, args)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn view_definitions(
+    projectName: String,
+    branchName: String,
+    names: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let mut mcp_guard = state.mcp_client.lock().unwrap();
+
+    // Spawn MCP client if not already running
+    if mcp_guard.is_none() {
+        *mcp_guard = Some(MCPClient::spawn()?);
+    }
+
+    let mcp_client = mcp_guard
+        .as_mut()
+        .ok_or("Failed to get MCP client")?;
+
+    // Call the view-definitions tool
+    mcp_client.view_definitions(&projectName, &branchName, names)
 }
 
 // LSP Commands

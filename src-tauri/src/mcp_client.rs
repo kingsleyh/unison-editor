@@ -475,6 +475,89 @@ impl MCPClient {
         }
     }
 
+    /// View definitions with fully qualified names
+    ///
+    /// This calls the "view-definitions" MCP tool to get source code of definitions
+    /// with fully qualified names (like UCM's `edit` command), suitable for scratch files.
+    pub fn view_definitions(
+        &mut self,
+        project_name: &str,
+        branch_name: &str,
+        names: Vec<String>,
+    ) -> Result<String, String> {
+        let arguments = json!({
+            "projectContext": {
+                "projectName": project_name,
+                "branchName": branch_name
+            },
+            "names": names
+        });
+
+        let response = self.call_tool("view-definitions", arguments)?;
+
+        // Parse the response
+        if let Some(error) = response.get("error") {
+            return Err(error["message"]
+                .as_str()
+                .unwrap_or("Unknown error")
+                .to_string());
+        }
+
+        // Extract result content
+        if let Some(result) = response.get("result") {
+            let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+
+            // Extract text content from the result
+            let raw_output = result
+                .get("content")
+                .and_then(|c| c.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .unwrap_or_default();
+
+            if is_error {
+                return Err(raw_output);
+            }
+
+            // The raw_output is JSON with outputMessages containing the source code
+            // Parse it and extract the first outputMessage
+            if let Ok(json) = serde_json::from_str::<Value>(&raw_output) {
+                if let Some(output_msgs) = json.get("outputMessages").and_then(|v| v.as_array()) {
+                    // Get the first non-empty output message (the source code)
+                    for msg in output_msgs {
+                        if let Some(s) = msg.as_str() {
+                            if !s.is_empty() {
+                                return Ok(s.to_string());
+                            }
+                        }
+                    }
+                }
+
+                // Check for errors
+                if let Some(error_msgs) = json.get("errorMessages").and_then(|v| v.as_array()) {
+                    let errors: Vec<String> = error_msgs
+                        .iter()
+                        .filter_map(|m| m.as_str())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .collect();
+                    if !errors.is_empty() {
+                        return Err(errors.join("\n"));
+                    }
+                }
+            }
+
+            // Fallback: return raw output if not JSON
+            Ok(raw_output)
+        } else {
+            Err("Invalid MCP response: missing result".to_string())
+        }
+    }
+
     /// Close the MCP connection
     pub fn close(&mut self) {
         let _ = self.process.kill();

@@ -10,7 +10,8 @@ interface DefinitionCardProps {
   /** Resolved definition info for display (optional for backwards compatibility) */
   resolved?: ResolvedDefinition | null;
   isSelected?: boolean;
-  onAddToScratch: (source: string, name: string) => void;
+  /** Request to add this definition to scratch - parent handles FQN fetch */
+  onRequestAddToScratch: (fqn: string) => void;
   onClose: () => void;
   onReferenceClick: (name: string, type: 'term' | 'type') => void;
   onClick?: () => void;
@@ -25,7 +26,7 @@ export const DefinitionCard = forwardRef<HTMLDivElement, DefinitionCardProps>(
       definition,
       resolved,
       isSelected = false,
-      onAddToScratch,
+      onRequestAddToScratch,
       onClose,
       onReferenceClick,
       onClick,
@@ -33,9 +34,10 @@ export const DefinitionCard = forwardRef<HTMLDivElement, DefinitionCardProps>(
     ref
   ) {
     function handleAddToScratch() {
-      // Reassemble plain text source from segments for adding to scratch
-      const plainSource = definition.segments.map((seg) => seg.segment).join('');
-      onAddToScratch(plainSource, definition.name);
+      // Request parent to fetch FQN definition and add to scratch
+      // Use the FQN from resolved info, falling back to definition.name
+      const fqn = resolved?.fqn || definition.name;
+      onRequestAddToScratch(fqn);
     }
 
     // Check if this is a Doc term

@@ -454,6 +454,7 @@ impl UCMApiClient {
         project_name: &str,
         branch_name: &str,
         name: &str,
+        suffixify_bindings: bool,
     ) -> Result<Option<DefinitionSummary>> {
         let url = format!(
             "{}/projects/{}/branches/{}/getDefinition",
@@ -462,10 +463,14 @@ impl UCMApiClient {
 
         // UCM expects names as a query parameter (not names[])
         // Names can be fully qualified names (e.g. "base.List.map") or hashes (e.g. "#abc123...")
+        // suffixifyBindings controls whether names in the source are fully qualified (false) or shortened (true)
         let response = self
             .client
             .get(&url)
-            .query(&[("names", name)])
+            .query(&[
+                ("names", name),
+                ("suffixifyBindings", if suffixify_bindings { "true" } else { "false" }),
+            ])
             .send()
             .await
             .context("Failed to get definition")?;

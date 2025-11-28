@@ -104,7 +104,7 @@ export class UCMApiClient {
   }
 
   /**
-   * Get definition details
+   * Get definition details (with suffixified/shortened names for display)
    */
   async getDefinition(
     projectName: string,
@@ -112,6 +112,22 @@ export class UCMApiClient {
     name: string
   ): Promise<DefinitionSummary | null> {
     return invoke<DefinitionSummary | null>('get_definition', {
+      projectName,
+      branchName,
+      name,
+    });
+  }
+
+  /**
+   * Get definition with fully qualified names (for add-to-scratch)
+   * Returns source code where all references use FQN instead of shortened names
+   */
+  async getDefinitionFQN(
+    projectName: string,
+    branchName: string,
+    name: string
+  ): Promise<DefinitionSummary | null> {
+    return invoke<DefinitionSummary | null>('get_definition_fqn', {
       projectName,
       branchName,
       name,
@@ -225,6 +241,24 @@ export class UCMApiClient {
       projectName,
       branchName,
       args,
+    });
+  }
+
+  /**
+   * View definitions with fully qualified names
+   *
+   * Gets source code of definitions with fully qualified names,
+   * suitable for adding to scratch files (like UCM's `edit` command).
+   */
+  async viewDefinitions(
+    projectName: string,
+    branchName: string,
+    names: string[]
+  ): Promise<string> {
+    return invoke<string>('view_definitions', {
+      projectName,
+      branchName,
+      names,
     });
   }
 }

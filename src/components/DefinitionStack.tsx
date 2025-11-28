@@ -300,6 +300,33 @@ export function DefinitionStack({
     }
   }
 
+  /**
+   * Handle request to add a definition to scratch file.
+   * Fetches the definition with FQN (fully qualified names) and adds to scratch.
+   */
+  async function handleRequestAddToScratch(fqn: string) {
+    if (!currentProject || !currentBranch) return;
+
+    try {
+      // Fetch definition with suffixifyBindings=false for FQN source
+      const fqnDefinition = await client.getDefinitionFQN(
+        currentProject.name,
+        currentBranch.name,
+        fqn
+      );
+
+      if (fqnDefinition) {
+        // Reassemble plain text source from segments
+        const source = fqnDefinition.segments.map((seg) => seg.segment).join('');
+        onAddToScratch(source, fqn);
+      } else {
+        console.error('[DefinitionStack] Failed to fetch FQN definition for:', fqn);
+      }
+    } catch (err) {
+      console.error('[DefinitionStack] Error fetching FQN definition:', err);
+    }
+  }
+
   if (cards.length === 0) {
     return (
       <div className="definition-stack empty">
@@ -386,7 +413,7 @@ export function DefinitionStack({
               definition={card.definition}
               resolved={card.resolved}
               isSelected={isSelected}
-              onAddToScratch={onAddToScratch}
+              onRequestAddToScratch={handleRequestAddToScratch}
               onClose={() => handleCloseCard(card.id)}
               onReferenceClick={handleReferenceClick}
               onClick={() => handleCardClick(card.id)}
