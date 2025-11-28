@@ -425,7 +425,15 @@ function App() {
         const failed = result.testResults.filter(t => !t.passed).length;
 
         const output = result.testResults
-          .map((t) => `${t.passed ? '✅' : '🚫'} ${t.name}`)
+          .map((t) => {
+            if (t.passed) {
+              return `✅ ${t.name}`;
+            } else {
+              // Include failure details if available
+              const details = t.message && t.message !== 'Failed' ? `\n   ${t.message.replace(/\n/g, '\n   ')}` : '';
+              return `🚫 ${t.name}${details}`;
+            }
+          })
           .join('\n');
 
         setRunOutput({
@@ -498,7 +506,15 @@ function App() {
         const passed = result.testResults.filter(t => t.passed).length;
         const failed = result.testResults.filter(t => !t.passed).length;
         const testOutput = result.testResults
-          .map(t => `${t.passed ? '✅' : '🚫'} ${t.name}`)
+          .map(t => {
+            if (t.passed) {
+              return `✅ ${t.name}`;
+            } else {
+              // Include failure details if available
+              const details = t.message && t.message !== 'Failed' ? `\n   ${t.message.replace(/\n/g, '\n   ')}` : '';
+              return `🚫 ${t.name}${details}`;
+            }
+          })
           .join('\n');
         outputParts.push(`Tests: ${passed} passed, ${failed} failed\n${testOutput}`);
       }

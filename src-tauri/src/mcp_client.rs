@@ -525,12 +525,27 @@ fn parse_typecheck_output(raw_output: &str, is_error: bool) -> (String, Vec<Stri
             // Second pass: parse lines sequentially, tracking test names and watch expressions
             let mut pending_test_name: Option<String> = None;
             let mut pending_watch: Option<(usize, String)> = None; // (line_number, expression)
+            let mut collecting_failure_details: Option<String> = None; // Test name we're collecting failure details for
+            let mut failure_details: Vec<String> = Vec::new();
 
             for line in &all_lines {
                 let s = line.as_str();
 
                 // Check if this is a test definition line: "  4 | test> square.tests.ex1 = ..."
                 if s.contains(" | test>") {
+                    // If we were collecting failure details, finalize the previous failed test
+                    if let Some(name) = collecting_failure_details.take() {
+                        if !test_results.iter().any(|t: &TestResult| t.name == name) {
+                            let message = failure_details.join("\n");
+                            test_results.push(TestResult {
+                                name,
+                                passed: false,
+                                message,
+                            });
+                        }
+                        failure_details.clear();
+                    }
+
                     if let Some(idx) = s.find("test>") {
                         let after_test = s[idx + 5..].trim();
                         let name = after_test.split('=').next().unwrap_or("").trim().to_string();
@@ -543,6 +558,19 @@ fn parse_typecheck_output(raw_output: &str, is_error: bool) -> (String, Vec<Stri
 
                 // Check if this is a test result line (comes after definition)
                 if (s.contains("✅") || s.contains("◉")) && s.contains("Passed") {
+                    // If we were collecting failure details, finalize the previous failed test
+                    if let Some(name) = collecting_failure_details.take() {
+                        if !test_results.iter().any(|t: &TestResult| t.name == name) {
+                            let message = failure_details.join("\n");
+                            test_results.push(TestResult {
+                                name,
+                                passed: false,
+                                message,
+                            });
+                        }
+                        failure_details.clear();
+                    }
+
                     let name = pending_test_name.take().unwrap_or_else(|| "test".to_string());
                     // Deduplicate - only add if not already present
                     if !test_results.iter().any(|t: &TestResult| t.name == name) {
@@ -555,16 +583,49 @@ fn parse_typecheck_output(raw_output: &str, is_error: bool) -> (String, Vec<Stri
                     continue;
                 }
 
-                // Check for failing test
+                // Check for failing test - start collecting failure details
                 if s.contains("🚫") || (s.contains("FAILED") && !s.contains("0 failed")) {
+                    // If we were collecting failure details for another test, finalize it
+                    if let Some(name) = collecting_failure_details.take() {
+                        if !test_results.iter().any(|t: &TestResult| t.name == name) {
+                            let message = failure_details.join("\n");
+                            test_results.push(TestResult {
+                                name,
+                                passed: false,
+                                message,
+                            });
+                        }
+                        failure_details.clear();
+                    }
+
                     let name = pending_test_name.take().unwrap_or_else(|| "test".to_string());
-                    // Deduplicate - only add if not already present
-                    if !test_results.iter().any(|t: &TestResult| t.name == name) {
-                        test_results.push(TestResult {
-                            name,
-                            passed: false,
-                            message: s.to_string(),
-                        });
+                    // Start collecting failure details for this test
+                    collecting_failure_details = Some(name);
+                    continue;
+                }
+
+                // If we're collecting failure details, add this line (unless it's a marker line)
+                if collecting_failure_details.is_some() {
+                    let trimmed = s.trim();
+                    // Stop collecting on (cached) marker or if we hit a new section
+                    if trimmed == "(cached)" || trimmed.starts_with("(cached)") {
+                        // Finalize this failed test
+                        if let Some(name) = collecting_failure_details.take() {
+                            if !test_results.iter().any(|t: &TestResult| t.name == name) {
+                                let message = failure_details.join("\n");
+                                test_results.push(TestResult {
+                                    name,
+                                    passed: false,
+                                    message,
+                                });
+                            }
+                        }
+                        failure_details.clear();
+                        continue;
+                    }
+                    // Skip empty lines and the "FAILED" text itself
+                    if !trimmed.is_empty() && trimmed != "FAILED" {
+                        failure_details.push(trimmed.to_string());
                     }
                     continue;
                 }
@@ -613,6 +674,18 @@ fn parse_typecheck_output(raw_output: &str, is_error: bool) -> (String, Vec<Stri
                         pending_watch = Some((line_num, expression));
                     }
                     continue;
+                }
+            }
+
+            // After the loop, finalize any pending failure details
+            if let Some(name) = collecting_failure_details.take() {
+                if !test_results.iter().any(|t: &TestResult| t.name == name) {
+                    let message = failure_details.join("\n");
+                    test_results.push(TestResult {
+                        name,
+                        passed: false,
+                        message,
+                    });
                 }
             }
         }

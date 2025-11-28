@@ -67,6 +67,9 @@ export function getWatchExpression(lineContent: string): string {
  * Instead of removing lines (which can break Unison syntax), we comment out
  * other watch expressions and test expressions.
  *
+ * IMPORTANT: Multi-line test blocks (like `test> foo = test.verify do`) need
+ * their entire indented body commented out, not just the first line.
+ *
  * @param fullCode The full editor content
  * @param targetLineNumber The line number of the watch expression to include (1-based)
  * @returns Code with all definitions but only the target watch expression
@@ -74,11 +77,30 @@ export function getWatchExpression(lineContent: string): string {
 export function buildSingleWatchCode(fullCode: string, targetLineNumber: number): string {
   const lines = fullCode.split('\n');
   const resultLines: string[] = [];
+  let commentingOutBlock = false;
+  let blockIndentLevel = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1; // Monaco uses 1-based line numbers
     const trimmed = line.trimStart();
+    const currentIndent = line.length - trimmed.length;
+
+    // If we're commenting out a multi-line block, check if we've exited it
+    if (commentingOutBlock) {
+      // Empty lines don't end blocks - keep them as-is
+      if (trimmed.length === 0) {
+        resultLines.push(line);
+        continue;
+      }
+      // If current line has more indentation than the block start, it's part of the block
+      if (currentIndent > blockIndentLevel) {
+        resultLines.push('-- ' + line);
+        continue;
+      }
+      // We've exited the block (same or less indentation)
+      commentingOutBlock = false;
+    }
 
     if (isWatchExpressionLine(line)) {
       // Only include this watch expression if it's the target line
@@ -91,6 +113,11 @@ export function buildSingleWatchCode(fullCode: string, targetLineNumber: number)
     } else if (trimmed.startsWith('test>')) {
       // Comment out inline test expressions
       resultLines.push('-- ' + line);
+      // Check if this is a multi-line block that needs its body commented out
+      if (trimmed.endsWith(' do') || trimmed.endsWith('\tdo')) {
+        commentingOutBlock = true;
+        blockIndentLevel = currentIndent;
+      }
     } else {
       // Include all other lines (definitions, comments, test.verify blocks, etc.)
       resultLines.push(line);
@@ -181,6 +208,9 @@ export function getTestName(lineContent: string): string {
  * Instead of removing lines (which can break Unison syntax), we comment out
  * other test expressions and watch expressions.
  *
+ * IMPORTANT: Multi-line test blocks (like `test> foo = test.verify do`) need
+ * their entire indented body commented out, not just the first line.
+ *
  * @param fullCode The full editor content
  * @param targetLineNumber The line number of the test expression to include (1-based)
  * @returns Code with all definitions but only the target test expression
@@ -188,12 +218,30 @@ export function getTestName(lineContent: string): string {
 export function buildSingleTestCode(fullCode: string, targetLineNumber: number): string {
   const lines = fullCode.split('\n');
   const resultLines: string[] = [];
-  const trimmedTarget = lines[targetLineNumber - 1]?.trimStart() || '';
+  let commentingOutBlock = false;
+  let blockIndentLevel = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1;
     const trimmed = line.trimStart();
+    const currentIndent = line.length - trimmed.length;
+
+    // If we're commenting out a multi-line block, check if we've exited it
+    if (commentingOutBlock) {
+      // Empty lines don't end blocks - keep them as-is
+      if (trimmed.length === 0) {
+        resultLines.push(line);
+        continue;
+      }
+      // If current line has more indentation than the block start, it's part of the block
+      if (currentIndent > blockIndentLevel) {
+        resultLines.push('-- ' + line);
+        continue;
+      }
+      // We've exited the block (same or less indentation)
+      commentingOutBlock = false;
+    }
 
     if (isWatchExpressionLine(line)) {
       // Comment out watch expressions
@@ -202,12 +250,19 @@ export function buildSingleTestCode(fullCode: string, targetLineNumber: number):
       // Only include the target test> expression
       if (lineNumber === targetLineNumber) {
         resultLines.push(line);
+        // Don't set commentingOutBlock - we want to INCLUDE this block
       } else {
-        // Comment out other test> expressions
+        // Comment out this test> line
         resultLines.push('-- ' + line);
+        // Check if this is a multi-line block that needs its body commented out
+        // Multi-line blocks end with 'do' or contain '=' followed by a block expression
+        if (trimmed.endsWith(' do') || trimmed.endsWith('\tdo')) {
+          commentingOutBlock = true;
+          blockIndentLevel = currentIndent;
+        }
       }
     } else {
-      // Include all other lines (definitions, comments, test.verify blocks, etc.)
+      // Include all other lines (definitions, comments, etc.)
       resultLines.push(line);
     }
   }
@@ -220,18 +275,45 @@ export function buildSingleTestCode(fullCode: string, targetLineNumber: number):
  * Used for "Run All Watch Expressions".
  *
  * Instead of removing lines (which can break Unison syntax), we comment out test expressions.
+ *
+ * IMPORTANT: Multi-line test blocks (like `test> foo = test.verify do`) need
+ * their entire indented body commented out, not just the first line.
  */
 export function buildAllWatchesCode(fullCode: string): string {
   const lines = fullCode.split('\n');
   const resultLines: string[] = [];
+  let commentingOutBlock = false;
+  let blockIndentLevel = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trimStart();
+    const currentIndent = line.length - trimmed.length;
+
+    // If we're commenting out a multi-line block, check if we've exited it
+    if (commentingOutBlock) {
+      // Empty lines don't end blocks - keep them as-is
+      if (trimmed.length === 0) {
+        resultLines.push(line);
+        continue;
+      }
+      // If current line has more indentation than the block start, it's part of the block
+      if (currentIndent > blockIndentLevel) {
+        resultLines.push('-- ' + line);
+        continue;
+      }
+      // We've exited the block (same or less indentation)
+      commentingOutBlock = false;
+    }
 
     if (trimmed.startsWith('test>')) {
       // Comment out inline test expressions
       resultLines.push('-- ' + line);
+      // Check if this is a multi-line block that needs its body commented out
+      if (trimmed.endsWith(' do') || trimmed.endsWith('\tdo')) {
+        commentingOutBlock = true;
+        blockIndentLevel = currentIndent;
+      }
     } else {
       // Include everything else (definitions, watch expressions, test.verify blocks as definitions)
       resultLines.push(line);
