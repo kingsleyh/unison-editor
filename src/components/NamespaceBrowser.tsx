@@ -233,23 +233,22 @@ export function NamespaceBrowser({
 
     // Open - only for terms/types
     if (hasTermsOrTypes) {
+      const termsAndTypes = selection.filter(n => n.type === 'term' || n.type === 'type');
       items.push({
-        label: 'Open',
+        label: `Open${termsAndTypes.length > 1 ? ` (${termsAndTypes.length})` : ''}`,
         icon: '📄',
         onClick: () => {
-          selection.forEach(node => {
-            if (node.type === 'term' || node.type === 'type') {
-              onOpenDefinition(node.fullPath, node.type);
-            }
+          termsAndTypes.forEach(node => {
+            onOpenDefinition(node.fullPath, node.type);
           });
         },
       });
     }
 
-    // Add to Scratch - for any selection
+    // Add to Scratch - for any selection (namespaces will recursively include their contents)
     if (onAddToScratch && selection.length > 0) {
       items.push({
-        label: 'Add to Scratch',
+        label: `Add to Scratch${selection.length > 1 ? ` (${selection.length})` : ''}`,
         icon: '📝',
         onClick: () => onAddToScratch(selection),
       });

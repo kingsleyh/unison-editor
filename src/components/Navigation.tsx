@@ -42,19 +42,63 @@ export function Navigation({
   const ucmApi = getUCMApiClient();
 
   /**
+   * Recursively collect all term/type FQNs from a namespace
+   */
+  const collectNamespaceItems = useCallback(async (
+    namespacePath: string
+  ): Promise<string[]> => {
+    if (!currentProject || !currentBranch) return [];
+
+    const items = await ucmApi.listNamespace(
+      currentProject.name,
+      currentBranch.name,
+      namespacePath
+    );
+
+    const fqns: string[] = [];
+
+    for (const item of items) {
+      const fullPath = namespacePath === '.'
+        ? item.name
+        : `${namespacePath}.${item.name}`;
+
+      if (item.type === 'term' || item.type === 'type') {
+        fqns.push(fullPath);
+      } else if (item.type === 'namespace') {
+        // Recursively collect from sub-namespaces
+        const subItems = await collectNamespaceItems(fullPath);
+        fqns.push(...subItems);
+      }
+    }
+
+    return fqns;
+  }, [currentProject, currentBranch, ucmApi]);
+
+  /**
    * Handle "Add to Scratch" for selected namespace items
    */
   const handleAddToScratch = useCallback(async (nodes: TreeNode[]) => {
     if (!onAddToScratch || !currentProject || !currentBranch) return;
 
     try {
-      // Get FQNs for terms and types (not namespaces)
-      const fqns = nodes
-        .filter(n => n.type === 'term' || n.type === 'type')
-        .map(n => n.fullPath);
+      // Collect FQNs from all selected items
+      const allFqns: string[] = [];
+      const sourceLabels: string[] = [];
 
-      if (fqns.length === 0) {
-        console.warn('No terms or types selected for scratch');
+      for (const node of nodes) {
+        if (node.type === 'term' || node.type === 'type') {
+          allFqns.push(node.fullPath);
+          sourceLabels.push(`-- from ${node.fullPath}`);
+        } else if (node.type === 'namespace') {
+          // Recursively collect all terms/types from the namespace
+          const namespaceFqns = await collectNamespaceItems(node.fullPath);
+          allFqns.push(...namespaceFqns);
+          sourceLabels.push(`-- from namespace ${node.fullPath} (${namespaceFqns.length} items)`);
+        }
+      }
+
+      if (allFqns.length === 0) {
+        console.warn('No terms or types found for scratch');
         return;
       }
 
@@ -62,20 +106,17 @@ export function Navigation({
       const sources = await ucmApi.viewDefinitions(
         currentProject.name,
         currentBranch.name,
-        fqns
+        allFqns
       );
 
-      // Format with comment separators
-      const formattedContent = nodes
-        .filter(n => n.type === 'term' || n.type === 'type')
-        .map(node => `-- from ${node.fullPath}`)
-        .join('\n') + '\n\n' + sources;
+      // Format with comment header
+      const formattedContent = sourceLabels.join('\n') + '\n\n' + sources;
 
       onAddToScratch(formattedContent);
     } catch (err) {
       console.error('Failed to get definitions for scratch:', err);
     }
-  }, [onAddToScratch, currentProject, currentBranch, ucmApi]);
+  }, [onAddToScratch, currentProject, currentBranch, ucmApi, collectNamespaceItems]);
 
   /**
    * Handle rename request from context menu

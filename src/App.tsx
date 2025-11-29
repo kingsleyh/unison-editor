@@ -849,6 +849,33 @@ function App() {
     }
   }
 
+  /**
+   * Handle adding content to scratch from Navigation (UCM Explorer)
+   * This is a wrapper that takes pre-formatted content string
+   */
+  function handleAddToScratchFromNav(content: string) {
+    const activeTab = getActiveTab();
+
+    if (activeTab) {
+      // Append to existing active tab
+      const newContent = `${activeTab.content}\n\n${content}`;
+      updateTab(activeTab.id, {
+        content: newContent,
+        isDirty: true,
+      });
+    } else {
+      // Create new scratch file
+      const newTab: EditorTab = {
+        id: `tab-${Date.now()}`,
+        title: 'Scratch',
+        content: `-- Scratch file\n\n${content}`,
+        language: 'unison',
+        isDirty: false,
+      };
+      addTab(newTab);
+    }
+  }
+
   // Manual save function (for Cmd+S)
   const saveCurrentFile = useCallback(async () => {
     const activeTab = getActiveTab();
@@ -980,6 +1007,7 @@ function App() {
                 onFileClick={handleFileClick}
                 onDefinitionClick={handleOpenDefinition}
                 revealInTree={revealInTree}
+                onAddToScratch={handleAddToScratchFromNav}
               />
             }
             right={
