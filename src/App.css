@@ -318,6 +318,42 @@ body {
   background-color: #2a2d2e;
 }
 
+.file-explorer-item.selected {
+  background-color: #094771;
+}
+
+.file-explorer-item.selected:hover {
+  background-color: #0a5485;
+}
+
+/* Dragging items */
+.file-explorer-item.dragging {
+  opacity: 0.5;
+}
+
+/* Valid drop target - GREEN */
+.file-explorer-item.drop-target-valid {
+  background-color: rgba(40, 167, 69, 0.2);
+  outline: 2px solid #28a745;
+  outline-offset: -2px;
+}
+
+/* Invalid drop target - RED */
+.file-explorer-item.drop-target-invalid {
+  background-color: rgba(220, 53, 69, 0.2);
+  outline: 2px solid #dc3545;
+  outline-offset: -2px;
+}
+
+/* Drop zone indicator - line between items */
+.drop-zone-indicator {
+  height: 2px;
+  background-color: #28a745;
+  margin: 2px 0;
+  border-radius: 1px;
+  box-shadow: 0 0 4px rgba(40, 167, 69, 0.5);
+}
+
 .file-icon {
   font-size: 16px;
   width: 20px;
@@ -452,13 +488,16 @@ body {
 
 /* File Actions */
 .file-actions {
+  display: flex;
+  gap: 6px;
   padding: 8px;
   border-bottom: 1px solid #3e3e42;
   margin-bottom: 4px;
 }
 
-.btn-new-file {
-  width: 100%;
+.btn-new-file,
+.btn-new-folder {
+  flex: 1;
   padding: 6px 12px;
   background-color: #0e639c;
   border: none;
@@ -470,11 +509,13 @@ body {
   transition: all 0.2s;
 }
 
-.btn-new-file:hover:not(:disabled) {
+.btn-new-file:hover:not(:disabled),
+.btn-new-folder:hover:not(:disabled) {
   background-color: #1177bb;
 }
 
-.btn-new-file:disabled {
+.btn-new-file:disabled,
+.btn-new-folder:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -684,6 +725,81 @@ body {
   margin-top: 8px;
 }
 
+/* Additional modal styles */
+.modal-close {
+  background: none;
+  border: none;
+  color: #cccccc;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  color: #ffffff;
+}
+
+.input-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-help {
+  font-size: 11px;
+  color: #858585;
+  margin-top: 4px;
+}
+
+.warning-box {
+  padding: 12px;
+  background-color: #5a3d1d;
+  border: 1px solid #e09c4f;
+  border-radius: 4px;
+  color: #e09c4f;
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+.delete-item-list {
+  margin-top: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.delete-item-list p {
+  margin-bottom: 8px;
+  color: #cccccc;
+}
+
+.delete-item-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.delete-item-list li {
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #cccccc;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-type-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background-color: #3c3c3c;
+  color: #858585;
+  text-transform: uppercase;
+}
+
 /* Context Menu */
 .context-menu {
   background-color: #252526;
@@ -753,12 +869,14 @@ body {
 }
 
 .search-box {
+  display: flex;
+  gap: 6px;
   padding: 8px;
   border-bottom: 1px solid #3e3e42;
 }
 
 .search-box input {
-  width: 100%;
+  flex: 1;
   padding: 6px 8px;
   background-color: #3c3c3c;
   border: 1px solid #3e3e42;
@@ -770,6 +888,29 @@ body {
 .search-box input:focus {
   outline: none;
   border-color: #007acc;
+}
+
+/* Refresh button styles */
+.btn-refresh {
+  padding: 4px 8px;
+  background-color: #3c3c3c;
+  border: 1px solid #3e3e42;
+  border-radius: 2px;
+  color: #cccccc;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  background-color: #4e4e4e;
+  border-color: #505050;
+}
+
+.btn-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .namespace-items {
@@ -794,11 +935,20 @@ body {
 }
 
 .namespace-item.selected {
-  background-color: rgba(78, 201, 176, 0.1);
+  background-color: #094771;
 }
 
 .namespace-item.selected:hover {
-  background-color: rgba(78, 201, 176, 0.15);
+  background-color: #0a5485;
+}
+
+.namespace-item.drop-target {
+  background-color: #2d4e2d;
+  outline: 1px dashed #4ec9b0;
+}
+
+.namespace-item.dragging {
+  opacity: 0.6;
 }
 
 .namespace-item.highlighted {

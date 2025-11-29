@@ -106,20 +106,20 @@ export class FileSystemService {
 
   /**
    * Filter file tree to show only .u files
+   * Keeps all directories (since they might contain .u files when expanded)
+   * Only filters out non-.u files
    */
   filterUnisonFiles(nodes: FileNode[]): FileNode[] {
     return nodes
       .map((node) => {
         if (node.isDirectory) {
+          // Keep all directories - they may contain .u files when expanded
+          // If children are already loaded, filter them recursively
           const filteredChildren = node.children
             ? this.filterUnisonFiles(node.children)
-            : [];
+            : undefined;
 
-          // Only include directory if it has .u files inside
-          if (filteredChildren.length > 0) {
-            return { ...node, children: filteredChildren };
-          }
-          return null;
+          return { ...node, children: filteredChildren };
         } else if (this.isUnisonFile(node.name)) {
           return node;
         }

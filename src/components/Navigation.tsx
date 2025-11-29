@@ -1,27 +1,103 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { FileExplorer } from './FileExplorer';
-import { NamespaceBrowser } from './NamespaceBrowser';
+import { NamespaceBrowser, type TreeNode } from './NamespaceBrowser';
 import { WorkspaceProjectLinker } from './WorkspaceProjectLinker';
 import { FileCreationModal } from './FileCreationModal';
+import { FolderCreationModal } from './FolderCreationModal';
+import { NamespaceRenameModal } from './NamespaceRenameModal';
+import { NamespaceDeleteModal } from './NamespaceDeleteModal';
 import { CollapsiblePanelStack, type PanelConfig } from './CollapsiblePanelStack';
 import { useUnisonStore } from '../store/unisonStore';
 import { getFileSystemService } from '../services/fileSystem';
+import { getUCMApiClient } from '../services/ucmApi';
 
 interface NavigationProps {
   onFileClick: (path: string, name: string) => void;
   onDefinitionClick: (name: string, type: 'term' | 'type') => void;
   /** FQN path to reveal and highlight in the namespace browser */
   revealInTree?: string | null;
+  /** Callback to add content to scratch file */
+  onAddToScratch?: (content: string) => void;
 }
 
-export function Navigation({ onFileClick, onDefinitionClick, revealInTree }: NavigationProps) {
+export function Navigation({
+  onFileClick,
+  onDefinitionClick,
+  revealInTree,
+  onAddToScratch,
+}: NavigationProps) {
   const [showOnlyUnison, setShowOnlyUnison] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const { workspaceDirectory } = useUnisonStore();
+  // UCM Explorer modal state
+  const [renameNode, setRenameNode] = useState<TreeNode | null>(null);
+  const [deleteNodes, setDeleteNodes] = useState<TreeNode[]>([]);
+  const [namespaceRefreshTrigger, setNamespaceRefreshTrigger] = useState(0);
+
+  const { workspaceDirectory, currentProject, currentBranch, refreshNamespace } = useUnisonStore();
   const fileSystemService = getFileSystemService();
+  const ucmApi = getUCMApiClient();
+
+  /**
+   * Handle "Add to Scratch" for selected namespace items
+   */
+  const handleAddToScratch = useCallback(async (nodes: TreeNode[]) => {
+    if (!onAddToScratch || !currentProject || !currentBranch) return;
+
+    try {
+      // Get FQNs for terms and types (not namespaces)
+      const fqns = nodes
+        .filter(n => n.type === 'term' || n.type === 'type')
+        .map(n => n.fullPath);
+
+      if (fqns.length === 0) {
+        console.warn('No terms or types selected for scratch');
+        return;
+      }
+
+      // Get definition sources using view-definitions
+      const sources = await ucmApi.viewDefinitions(
+        currentProject.name,
+        currentBranch.name,
+        fqns
+      );
+
+      // Format with comment separators
+      const formattedContent = nodes
+        .filter(n => n.type === 'term' || n.type === 'type')
+        .map(node => `-- from ${node.fullPath}`)
+        .join('\n') + '\n\n' + sources;
+
+      onAddToScratch(formattedContent);
+    } catch (err) {
+      console.error('Failed to get definitions for scratch:', err);
+    }
+  }, [onAddToScratch, currentProject, currentBranch, ucmApi]);
+
+  /**
+   * Handle rename request from context menu
+   */
+  const handleRename = useCallback((node: TreeNode) => {
+    setRenameNode(node);
+  }, []);
+
+  /**
+   * Handle delete request from context menu
+   */
+  const handleDelete = useCallback((nodes: TreeNode[]) => {
+    setDeleteNodes(nodes);
+  }, []);
+
+  /**
+   * Handle completion of rename/delete operations
+   */
+  const handleOperationComplete = useCallback(() => {
+    // Trigger namespace browser refresh
+    refreshNamespace();
+  }, [refreshNamespace]);
 
   async function handleCreateFile(filename: string, template: string) {
     if (!workspaceDirectory) {
@@ -55,8 +131,42 @@ export function Navigation({ onFileClick, onDefinitionClick, revealInTree }: Nav
     }
   }
 
+  async function handleCreateFolder(folderName: string) {
+    if (!workspaceDirectory) {
+      setCreateError('No workspace selected');
+      return;
+    }
+
+    try {
+      const folderPath = `${workspaceDirectory}/${folderName}`;
+
+      // Check if folder already exists
+      const exists = await fileSystemService.fileExists(folderPath);
+      if (exists) {
+        setCreateError(`Folder '${folderName}' already exists`);
+        return;
+      }
+
+      // Create the folder (isDirectory = true)
+      await fileSystemService.createFile(folderPath, true);
+
+      // Trigger file explorer refresh
+      setRefreshTrigger((prev) => prev + 1);
+
+      setCreateError(null);
+    } catch (err) {
+      console.error('Failed to create folder:', err);
+      setCreateError(err instanceof Error ? err.message : 'Failed to create folder');
+    }
+  }
+
   // Workspace panel content
   const workspaceContent = <WorkspaceProjectLinker />;
+
+  // Handler to manually refresh file explorer
+  const handleRefreshFiles = () => {
+    setRefreshTrigger((prev) => prev + 1);
+  };
 
   // File Explorer panel content
   const fileExplorerContent = (
@@ -69,6 +179,22 @@ export function Navigation({ onFileClick, onDefinitionClick, revealInTree }: Nav
           title={workspaceDirectory ? 'Create new .u file' : 'Select a workspace first'}
         >
           + New File
+        </button>
+        <button
+          className="btn-new-folder"
+          onClick={() => setIsFolderModalOpen(true)}
+          disabled={!workspaceDirectory}
+          title={workspaceDirectory ? 'Create new folder' : 'Select a workspace first'}
+        >
+          + New Folder
+        </button>
+        <button
+          className="btn-refresh"
+          onClick={handleRefreshFiles}
+          disabled={!workspaceDirectory}
+          title="Refresh file list"
+        >
+          ↻
         </button>
       </div>
 
@@ -99,7 +225,13 @@ export function Navigation({ onFileClick, onDefinitionClick, revealInTree }: Nav
 
   // UCM Explorer panel content
   const ucmExplorerContent = (
-    <NamespaceBrowser onOpenDefinition={onDefinitionClick} revealPath={revealInTree} />
+    <NamespaceBrowser
+      onOpenDefinition={onDefinitionClick}
+      revealPath={revealInTree}
+      onAddToScratch={onAddToScratch ? handleAddToScratch : undefined}
+      onRename={handleRename}
+      onDelete={handleDelete}
+    />
   );
 
   const panels: PanelConfig[] = [
@@ -135,6 +267,31 @@ export function Navigation({ onFileClick, onDefinitionClick, revealInTree }: Nav
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateFile}
         defaultPath={workspaceDirectory || undefined}
+      />
+
+      <FolderCreationModal
+        isOpen={isFolderModalOpen}
+        onClose={() => setIsFolderModalOpen(false)}
+        onCreate={handleCreateFolder}
+        parentPath={workspaceDirectory || undefined}
+      />
+
+      {/* UCM Explorer modals */}
+      {renameNode && (
+        <NamespaceRenameModal
+          isOpen={true}
+          onClose={() => setRenameNode(null)}
+          currentFQN={renameNode.fullPath}
+          itemType={renameNode.type}
+          onComplete={handleOperationComplete}
+        />
+      )}
+
+      <NamespaceDeleteModal
+        isOpen={deleteNodes.length > 0}
+        onClose={() => setDeleteNodes([])}
+        items={deleteNodes}
+        onComplete={handleOperationComplete}
       />
     </div>
   );

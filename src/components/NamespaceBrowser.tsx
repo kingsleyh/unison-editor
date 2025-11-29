@@ -1,12 +1,28 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useUnisonStore } from '../store/unisonStore';
 import { getUCMApiClient } from '../services/ucmApi';
 import type { NamespaceItem } from '../services/ucmApi';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
+import { moveItem } from '../services/ucmCommands';
 
 interface NamespaceBrowserProps {
   onOpenDefinition: (name: string, type: 'term' | 'type') => void;
   /** FQN path to reveal and highlight in the tree */
   revealPath?: string | null;
+  /** Callback when selection changes (for parent components) */
+  onSelectionChange?: (selectedNodes: TreeNode[]) => void;
+  /** Callback to add selected items to scratch file */
+  onAddToScratch?: (nodes: TreeNode[]) => void;
+  /** Callback to rename/move an item */
+  onRename?: (node: TreeNode) => void;
+  /** Callback to delete selected items */
+  onDelete?: (nodes: TreeNode[]) => void;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  targetNode: TreeNode;
 }
 
 interface TreeNode {
@@ -43,7 +59,17 @@ function cloneTreeNodes(nodes: TreeNode[]): TreeNode[] {
   return nodes.map(cloneTreeNode);
 }
 
-export function NamespaceBrowser({ onOpenDefinition, revealPath }: NamespaceBrowserProps) {
+// Export TreeNode type for use in other components
+export type { TreeNode };
+
+export function NamespaceBrowser({
+  onOpenDefinition,
+  revealPath,
+  onSelectionChange,
+  onAddToScratch,
+  onRename,
+  onDelete,
+}: NamespaceBrowserProps) {
   const { currentProject, currentBranch, namespaceVersion } = useUnisonStore();
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,7 +80,350 @@ export function NamespaceBrowser({ onOpenDefinition, revealPath }: NamespaceBrow
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const highlightedRef = useRef<HTMLDivElement>(null);
 
+  // Multi-select state
+  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set()); // Set of fullPath keys
+  const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // Drag-and-drop state
+  const draggedNodesRef = useRef<TreeNode[]>([]);
+  const [dropTarget, setDropTarget] = useState<{
+    path: string;
+    position: 'inside' | 'before' | 'after';
+  } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const { refreshNamespace } = useUnisonStore();
   const client = getUCMApiClient();
+
+  /**
+   * Get all visible nodes in the tree (for shift-click range selection)
+   */
+  const getVisibleNodes = useCallback((): TreeNode[] => {
+    const visible: TreeNode[] = [];
+
+    function collectVisible(nodes: TreeNode[]) {
+      for (const node of nodes) {
+        visible.push(node);
+        if (node.type === 'namespace' && node.isExpanded && node.children) {
+          collectVisible(node.children);
+        }
+      }
+    }
+
+    collectVisible(rootNodes);
+    return visible;
+  }, [rootNodes]);
+
+  /**
+   * Get TreeNode objects for current selection
+   */
+  const getSelectedTreeNodes = useCallback((): TreeNode[] => {
+    const result: TreeNode[] = [];
+
+    function findSelected(nodes: TreeNode[]) {
+      for (const node of nodes) {
+        if (selectedNodes.has(node.fullPath)) {
+          result.push(node);
+        }
+        if (node.children) {
+          findSelected(node.children);
+        }
+      }
+    }
+
+    findSelected(rootNodes);
+    return result;
+  }, [rootNodes, selectedNodes]);
+
+  // Notify parent when selection changes
+  useEffect(() => {
+    if (onSelectionChange) {
+      onSelectionChange(getSelectedTreeNodes());
+    }
+  }, [selectedNodes, onSelectionChange, getSelectedTreeNodes]);
+
+  /**
+   * Handle node click with multi-select support
+   */
+  const handleNodeClick = useCallback((
+    e: React.MouseEvent,
+    node: TreeNode,
+    nodePath: number[]
+  ) => {
+    const isMetaKey = e.metaKey || e.ctrlKey;
+    const isShiftKey = e.shiftKey;
+
+    if (isMetaKey) {
+      // Cmd/Ctrl+Click: Toggle selection without opening/expanding
+      e.preventDefault();
+      setSelectedNodes(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(node.fullPath)) {
+          newSet.delete(node.fullPath);
+        } else {
+          newSet.add(node.fullPath);
+        }
+        return newSet;
+      });
+      setLastSelectedPath(node.fullPath);
+    } else if (isShiftKey && lastSelectedPath) {
+      // Shift+Click: Range selection
+      e.preventDefault();
+      const visibleNodes = getVisibleNodes();
+      const lastIndex = visibleNodes.findIndex(n => n.fullPath === lastSelectedPath);
+      const currentIndex = visibleNodes.findIndex(n => n.fullPath === node.fullPath);
+
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        const newSelection = new Set<string>();
+        for (let i = start; i <= end; i++) {
+          newSelection.add(visibleNodes[i].fullPath);
+        }
+        setSelectedNodes(newSelection);
+      }
+    } else {
+      // Regular click: Select single item, open term or toggle namespace
+      setSelectedNodes(new Set([node.fullPath]));
+      setLastSelectedPath(node.fullPath);
+      setSelectedPath(node.fullPath);
+
+      if (node.type === 'namespace') {
+        toggleNode(nodePath);
+      } else {
+        handleItemClick(node);
+      }
+    }
+  }, [lastSelectedPath, getVisibleNodes]);
+
+  /**
+   * Handle right-click context menu
+   */
+  const handleContextMenu = useCallback((
+    e: React.MouseEvent,
+    node: TreeNode
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // If the right-clicked node is not in the current selection, select only it
+    if (!selectedNodes.has(node.fullPath)) {
+      setSelectedNodes(new Set([node.fullPath]));
+      setLastSelectedPath(node.fullPath);
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetNode: node,
+    });
+  }, [selectedNodes]);
+
+  /**
+   * Build context menu items based on current selection
+   */
+  const getContextMenuItems = useCallback((): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [];
+    const selection = getSelectedTreeNodes();
+    const hasTermsOrTypes = selection.some(n => n.type === 'term' || n.type === 'type');
+    const isSingleSelection = selection.length === 1;
+
+    // Open - only for terms/types
+    if (hasTermsOrTypes) {
+      items.push({
+        label: 'Open',
+        icon: '📄',
+        onClick: () => {
+          selection.forEach(node => {
+            if (node.type === 'term' || node.type === 'type') {
+              onOpenDefinition(node.fullPath, node.type);
+            }
+          });
+        },
+      });
+    }
+
+    // Add to Scratch - for any selection
+    if (onAddToScratch && selection.length > 0) {
+      items.push({
+        label: 'Add to Scratch',
+        icon: '📝',
+        onClick: () => onAddToScratch(selection),
+      });
+    }
+
+    // Divider before destructive operations
+    if (items.length > 0) {
+      items.push({ label: '', onClick: () => {}, divider: true });
+    }
+
+    // Rename/Move - only for single selection
+    if (onRename && isSingleSelection) {
+      items.push({
+        label: 'Rename/Move...',
+        icon: '✏️',
+        onClick: () => onRename(selection[0]),
+      });
+    }
+
+    // Delete - for any selection
+    if (onDelete && selection.length > 0) {
+      items.push({
+        label: `Delete${selection.length > 1 ? ` (${selection.length})` : ''}`,
+        icon: '🗑️',
+        onClick: () => onDelete(selection),
+      });
+    }
+
+    return items;
+  }, [getSelectedTreeNodes, onOpenDefinition, onAddToScratch, onRename, onDelete]);
+
+  /**
+   * Handle drag start - store dragged nodes
+   */
+  const handleDragStart = useCallback((e: React.DragEvent, node: TreeNode) => {
+    // If the dragged node is in selection, drag all selected nodes
+    // Otherwise, just drag the single node
+    if (selectedNodes.has(node.fullPath)) {
+      draggedNodesRef.current = getSelectedTreeNodes();
+    } else {
+      draggedNodesRef.current = [node];
+      // Also select this node
+      setSelectedNodes(new Set([node.fullPath]));
+    }
+
+    setIsDragging(true);
+
+    // Set drag data
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', node.fullPath);
+  }, [selectedNodes, getSelectedTreeNodes]);
+
+  /**
+   * Handle drag over - show drop target indicator
+   */
+  const handleDragOver = useCallback((e: React.DragEvent, node: TreeNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Can only drop into namespaces
+    if (node.type !== 'namespace') {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
+
+    // Check if we're dragging a node into itself or a descendant
+    const isInvalidDrop = draggedNodesRef.current.some(
+      draggedNode =>
+        draggedNode.fullPath === node.fullPath ||
+        node.fullPath.startsWith(draggedNode.fullPath + '.')
+    );
+
+    if (isInvalidDrop) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
+
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget({ path: node.fullPath, position: 'inside' });
+  }, []);
+
+  /**
+   * Handle drag leave - clear drop target
+   */
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    // Only clear if we're actually leaving (not entering a child)
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
+      setDropTarget(null);
+    }
+  }, []);
+
+  /**
+   * Handle drop - move items to target namespace
+   */
+  const handleDrop = useCallback(async (e: React.DragEvent, targetNode: TreeNode) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setDropTarget(null);
+    setIsDragging(false);
+
+    // Can only drop into namespaces
+    if (targetNode.type !== 'namespace') return;
+
+    const nodesToMove = draggedNodesRef.current;
+    if (nodesToMove.length === 0) return;
+
+    // Check for invalid drops
+    const isInvalidDrop = nodesToMove.some(
+      node =>
+        node.fullPath === targetNode.fullPath ||
+        targetNode.fullPath.startsWith(node.fullPath + '.')
+    );
+
+    if (isInvalidDrop) return;
+
+    // Move each item to the target namespace
+    try {
+      for (const node of nodesToMove) {
+        const newFQN = `${targetNode.fullPath}.${node.name}`;
+        await moveItem(node.fullPath, newFQN, node.type);
+      }
+      // Wait for UCM to process the commands before refreshing
+      setTimeout(() => {
+        refreshNamespace();
+      }, 500);
+    } catch (err) {
+      console.error('Failed to move items:', err);
+    }
+
+    draggedNodesRef.current = [];
+  }, [refreshNamespace]);
+
+  /**
+   * Handle drag end - cleanup
+   */
+  const handleDragEnd = useCallback(() => {
+    setDropTarget(null);
+    setIsDragging(false);
+    draggedNodesRef.current = [];
+  }, []);
+
+  /**
+   * Handle drop on root (move to top-level namespace)
+   */
+  const handleDropOnRoot = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setDropTarget(null);
+    setIsDragging(false);
+
+    const nodesToMove = draggedNodesRef.current;
+    if (nodesToMove.length === 0) return;
+
+    // Move each item to root namespace
+    try {
+      for (const node of nodesToMove) {
+        // Moving to root means just using the name (no namespace prefix)
+        const newFQN = node.name;
+        await moveItem(node.fullPath, newFQN, node.type);
+      }
+      // Wait for UCM to process the commands before refreshing
+      setTimeout(() => {
+        refreshNamespace();
+      }, 500);
+    } catch (err) {
+      console.error('Failed to move items to root:', err);
+    }
+
+    draggedNodesRef.current = [];
+  }, [refreshNamespace]);
 
   // Load root namespace when project/branch changes or when refreshNamespace is triggered
   useEffect(() => {
@@ -387,22 +756,24 @@ export function NamespaceBrowser({ onOpenDefinition, revealPath }: NamespaceBrow
     const nodePath = [...path];
     const hasChildren = node.type === 'namespace';
     const isHighlighted = node.fullPath === highlightedPath;
-    const isSelected = node.fullPath === selectedPath;
+    const isSelected = selectedNodes.has(node.fullPath);
+    const isDropTarget = dropTarget?.path === node.fullPath && dropTarget?.position === 'inside';
     const nodeKey = getNodeKey(node);
 
     return (
       <div key={nodeKey}>
         <div
           ref={isHighlighted ? highlightedRef : undefined}
-          className={`namespace-item ${isHighlighted ? 'highlighted' : ''} ${isSelected ? 'selected' : ''}`}
+          className={`namespace-item ${isHighlighted ? 'highlighted' : ''} ${isSelected ? 'selected' : ''} ${isDropTarget ? 'drop-target' : ''} ${isDragging && isSelected ? 'dragging' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
-          onClick={() => {
-            if (hasChildren) {
-              toggleNode(nodePath);
-            } else {
-              handleItemClick(node);
-            }
-          }}
+          onClick={(e) => handleNodeClick(e, node, nodePath)}
+          onContextMenu={(e) => handleContextMenu(e, node)}
+          draggable
+          onDragStart={(e) => handleDragStart(e, node)}
+          onDragOver={(e) => handleDragOver(e, node)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, node)}
+          onDragEnd={handleDragEnd}
         >
           {hasChildren && (
             <span className="tree-arrow">
@@ -444,6 +815,14 @@ export function NamespaceBrowser({ onOpenDefinition, revealPath }: NamespaceBrow
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
+        <button
+          className="btn-refresh"
+          onClick={() => refreshNamespace()}
+          title="Refresh namespace"
+          disabled={loading}
+        >
+          ↻
+        </button>
       </div>
 
       {error && <div className="error-message">{error}</div>}
@@ -480,6 +859,16 @@ export function NamespaceBrowser({ onOpenDefinition, revealPath }: NamespaceBrow
             )
           )}
         </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={getContextMenuItems()}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );
