@@ -189,6 +189,22 @@ export class UCMApiClient {
   }
 
   /**
+   * Switch UCM's project/branch context
+   *
+   * This syncs UCM with the editor's selected project/branch.
+   * Should be called when the user changes the project/branch dropdown.
+   */
+  async switchContext(
+    projectName: string,
+    branchName: string
+  ): Promise<void> {
+    return invoke('switch_project_branch', {
+      projectName,
+      branchName,
+    });
+  }
+
+  /**
    * Typecheck code and evaluate watch expressions
    *
    * Watch expressions are lines starting with ">" which are evaluated

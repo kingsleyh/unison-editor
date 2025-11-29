@@ -2597,6 +2597,49 @@ body {
 
 .vertical-resizable-bottom.collapsed {
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Collapsed bar for vertical splitter */
+.vertical-collapsed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  background-color: #252526;
+  border-top: 1px solid #3c3c3c;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.vertical-collapsed-bar:hover {
+  background-color: #2a2d2e;
+}
+
+.vertical-collapsed-icon {
+  font-size: 10px;
+  color: #858585;
+  transition: color 0.15s ease;
+}
+
+.vertical-collapsed-bar:hover .vertical-collapsed-icon {
+  color: #cccccc;
+}
+
+.vertical-collapsed-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #858585;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: color 0.15s ease;
+}
+
+.vertical-collapsed-bar:hover .vertical-collapsed-label {
+  color: #cccccc;
 }
 
 /* ============================================================================
@@ -2632,4 +2675,646 @@ body {
 
 .editor-status-indicator .status-text {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Bottom Panel Splitter Styles */
+.bottom-panel-splitter {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #1e1e1e;
+}
+
+.bottom-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #1e1e1e;
+  transition: width 0.15s ease;
+}
+
+.bottom-panel.collapsed {
+  cursor: pointer;
+  background-color: #252526;
+  flex-grow: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+.bottom-panel.collapsed:hover {
+  background-color: #2a2d2e;
+}
+
+.bottom-panel-collapsed-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 4px;
+  gap: 8px;
+  height: 100%;
+}
+
+.bottom-panel-collapsed-icon {
+  color: #858585;
+  font-size: 10px;
+  transform: rotate(90deg);
+}
+
+.bottom-panel-collapsed-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  color: #cccccc;
+  letter-spacing: 0.5px;
+  user-select: none;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.bottom-panel-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.bottom-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  flex-shrink: 0;
+}
+
+.bottom-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #cccccc;
+  letter-spacing: 0.5px;
+}
+
+.bottom-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bottom-panel-action-btn {
+  background: none;
+  border: none;
+  color: #858585;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.bottom-panel-action-btn:hover {
+  background-color: #3e3e42;
+  color: #cccccc;
+}
+
+.bottom-panel-collapse-btn {
+  background: none;
+  border: none;
+  color: #858585;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 12px;
+  border-radius: 3px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.bottom-panel-collapse-btn:hover {
+  background-color: #3e3e42;
+  color: #cccccc;
+}
+
+.bottom-panel-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.bottom-panel-divider {
+  width: 4px;
+  background-color: #3e3e42;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background-color 0.2s;
+}
+
+.bottom-panel-divider:hover,
+.bottom-panel-divider.dragging {
+  background-color: #007acc;
+}
+
+/* UCM Terminal Styles */
+.ucm-terminal-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ucm-terminal-container .xterm {
+  padding: 4px;
+}
+
+/* General Terminal Styles */
+.general-terminal-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.general-terminal-container .xterm {
+  padding: 4px;
+}
+
+/* =================================================
+   Welcome Screen Styles
+   ================================================= */
+
+.welcome-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: #1e1e1e;
+}
+
+.welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 500px;
+  padding: 40px;
+  text-align: center;
+}
+
+.welcome-logo {
+  margin-bottom: 8px;
+}
+
+.welcome-logo svg {
+  opacity: 0.9;
+}
+
+.welcome-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #cccccc;
+  margin: 0;
+}
+
+.welcome-subtitle {
+  font-size: 14px;
+  color: #858585;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.welcome-actions {
+  margin-top: 16px;
+}
+
+.welcome-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.welcome-btn.primary {
+  background-color: #0e639c;
+  color: white;
+}
+
+.welcome-btn.primary:hover {
+  background-color: #1177bb;
+}
+
+.recent-workspaces {
+  width: 100%;
+  margin-top: 32px;
+  text-align: left;
+}
+
+.recent-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #858585;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recent-workspace-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background-color: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+
+.recent-workspace-btn:hover {
+  background-color: #2a2d2e;
+  border-color: #505050;
+}
+
+.recent-workspace-btn .folder-icon {
+  flex-shrink: 0;
+  color: #c5c5c5;
+}
+
+.recent-workspace-btn .workspace-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.recent-workspace-btn .workspace-name {
+  font-size: 13px;
+  color: #cccccc;
+}
+
+.recent-workspace-btn .workspace-path {
+  font-size: 11px;
+  color: #858585;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* =================================================
+   Workspace Setup Dialog Styles
+   ================================================= */
+
+.workspace-setup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.workspace-setup-dialog {
+  background-color: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 8px;
+  padding: 24px;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.workspace-setup-dialog h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #cccccc;
+  margin: 0 0 20px 0;
+}
+
+.setup-field {
+  margin-bottom: 20px;
+}
+
+.setup-field > label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #858585;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.folder-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+}
+
+.folder-display svg {
+  flex-shrink: 0;
+  color: #c5c5c5;
+}
+
+.folder-display .folder-name {
+  font-size: 13px;
+  color: #cccccc;
+  font-weight: 500;
+}
+
+.folder-display .folder-path {
+  font-size: 11px;
+  color: #858585;
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.link-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #cccccc;
+  cursor: pointer;
+}
+
+.radio-option input[type="radio"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.radio-option .project-select,
+.radio-option .project-name-input {
+  margin-left: 8px;
+  padding: 4px 8px;
+  background-color: #3c3c3c;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 13px;
+}
+
+.radio-option .project-select {
+  min-width: 150px;
+}
+
+.radio-option .project-name-input {
+  width: 150px;
+}
+
+.checkbox-field {
+  margin-top: 16px;
+}
+
+.checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #cccccc;
+  cursor: pointer;
+}
+
+.checkbox-option input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.setup-error {
+  padding: 10px 12px;
+  background-color: rgba(244, 135, 113, 0.1);
+  border: 1px solid #f48771;
+  border-radius: 4px;
+  color: #f48771;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.setup-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.setup-btn.secondary {
+  background-color: #3c3c3c;
+  color: #cccccc;
+}
+
+.setup-btn.secondary:hover {
+  background-color: #505050;
+}
+
+.setup-btn.primary {
+  background-color: #0e639c;
+  color: white;
+}
+
+.setup-btn.primary:hover {
+  background-color: #1177bb;
+}
+
+.setup-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* =================================================
+   Workspace Project Linker Styles
+   ================================================= */
+
+.workspace-project-linker {
+  border-bottom: 1px solid #3e3e42;
+  padding: 12px;
+  background-color: #252526;
+}
+
+.linker-section {
+  margin-bottom: 12px;
+}
+
+.linker-section:last-child {
+  margin-bottom: 0;
+}
+
+.linker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #858585;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.linked-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  background-color: #0e639c;
+  color: white;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.workspace-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background-color: #1e1e1e;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+}
+
+.workspace-info .folder-icon {
+  flex-shrink: 0;
+  color: #c5c5c5;
+}
+
+.workspace-info .workspace-name {
+  flex: 1;
+  font-size: 12px;
+  color: #cccccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.workspace-action-btn {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #cccccc;
+  background-color: #3c3c3c;
+  border: 1px solid #4e4e52;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.workspace-action-btn:hover {
+  background-color: #4a4a4a;
+  border-color: #5e5e62;
+}
+
+.workspace-action-btn:active {
+  background-color: #505050;
+}
+
+.project-branch-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-row label {
+  font-size: 11px;
+  color: #858585;
+  width: 50px;
+  flex-shrink: 0;
+}
+
+.control-row select {
+  flex: 1;
+  padding: 4px 8px;
+  background-color: #3c3c3c;
+  border: 1px solid #3e3e42;
+  border-radius: 4px;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.control-row select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.control-row select:hover:not(:disabled) {
+  background-color: #505050;
+}
+
+.ucm-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #858585;
+  margin-top: 4px;
+}
+
+.ucm-status .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.ucm-status .status-dot.online {
+  background-color: #4ec9b0;
+}
+
+.ucm-status .status-dot.offline {
+  background-color: #f48771;
+}
+
+.ucm-status.connected .status-dot {
+  background-color: #4ec9b0;
+}
+
+.ucm-status.disconnected .status-dot {
+  background-color: #858585;
 }

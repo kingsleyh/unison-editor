@@ -3,15 +3,17 @@ use crate::ucm_api::{
     Branch, CurrentContext, Definition, DefinitionSummary, NamespaceItem, Project, SearchResult,
     UCMApiClient,
 };
+use crate::ucm_pty::{UCMContext, UCMPtyManager};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 pub struct AppState {
     pub ucm_client: Mutex<Option<UCMApiClient>>,
     pub mcp_client: Mutex<Option<MCPClient>>,
+    pub ucm_pty: Mutex<Option<UCMPtyManager>>,
 }
 
 impl Default for AppState {
@@ -19,6 +21,7 @@ impl Default for AppState {
         Self {
             ucm_client: Mutex::new(Some(UCMApiClient::new("127.0.0.1", 5858))),
             mcp_client: Mutex::new(None),
+            ucm_pty: Mutex::new(None),
         }
     }
 }
@@ -373,6 +376,29 @@ pub async fn file_exists(path: String) -> Result<bool, String> {
 
 // UCM MCP Commands - For updating codebase definitions
 
+/// Switch UCM's project/branch context
+/// This syncs UCM with the editor's selected project/branch
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn switch_project_branch(
+    projectName: String,
+    branchName: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut mcp_guard = state.mcp_client.lock().unwrap();
+
+    // Spawn MCP client if not already running
+    if mcp_guard.is_none() {
+        *mcp_guard = Some(MCPClient::spawn()?);
+    }
+
+    let mcp_client = mcp_guard
+        .as_mut()
+        .ok_or("Failed to get MCP client")?;
+
+    mcp_client.switch_context(&projectName, &branchName)
+}
+
 #[tauri::command]
 #[allow(non_snake_case)]
 pub fn ucm_update(
@@ -607,4 +633,88 @@ async fn read_lsp_message(stream: &mut TcpStream) -> Result<String, anyhow::Erro
     stream.read_exact(&mut content).await?;
 
     Ok(String::from_utf8(content)?)
+}
+
+// UCM PTY Commands - For integrated terminal
+
+/// Spawn UCM with PTY for interactive terminal
+///
+/// # Arguments
+/// * `cwd` - Optional working directory for UCM (for file loading via `load` command)
+#[tauri::command]
+pub fn ucm_pty_spawn(
+    cwd: Option<String>,
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut pty_guard = state.ucm_pty.lock().unwrap();
+
+    // Only spawn if not already running
+    if pty_guard.is_some() {
+        return Ok(());
+    }
+
+    let manager = UCMPtyManager::spawn(app_handle, cwd)?;
+    *pty_guard = Some(manager);
+
+    log::info!("UCM PTY spawned successfully");
+    Ok(())
+}
+
+/// Write data to UCM PTY (user input from terminal)
+#[tauri::command]
+pub fn ucm_pty_write(
+    data: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let pty_guard = state.ucm_pty.lock().unwrap();
+    let manager = pty_guard
+        .as_ref()
+        .ok_or("UCM PTY not spawned")?;
+
+    manager.write(data.as_bytes())
+}
+
+/// Resize UCM PTY (when terminal is resized)
+#[tauri::command]
+pub fn ucm_pty_resize(
+    rows: u16,
+    cols: u16,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let pty_guard = state.ucm_pty.lock().unwrap();
+    let manager = pty_guard
+        .as_ref()
+        .ok_or("UCM PTY not spawned")?;
+
+    manager.resize(rows, cols)
+}
+
+/// Get current UCM context (project/branch) detected from PTY output
+#[tauri::command]
+pub fn ucm_pty_get_context(
+    state: State<'_, AppState>,
+) -> Result<UCMContext, String> {
+    let pty_guard = state.ucm_pty.lock().unwrap();
+    let manager = pty_guard
+        .as_ref()
+        .ok_or("UCM PTY not spawned")?;
+
+    Ok(manager.get_context())
+}
+
+/// Send switch command to UCM via PTY
+/// This switches UCM's project/branch context in the integrated terminal
+#[tauri::command]
+pub fn ucm_pty_switch_context(
+    project: String,
+    branch: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let pty_guard = state.ucm_pty.lock().unwrap();
+    let manager = pty_guard
+        .as_ref()
+        .ok_or("UCM PTY not spawned")?;
+
+    manager.switch_context(&project, &branch)
 }

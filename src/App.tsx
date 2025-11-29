@@ -1,18 +1,23 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Editor, type DiagnosticCount } from './components/Editor';
-import { ProjectBranchSelector } from './components/ProjectBranchSelector';
 import { Navigation } from './components/Navigation';
 import { DefinitionStack } from './components/DefinitionStack';
 import { ResizableSplitter } from './components/ResizableSplitter';
 import { VerticalResizableSplitter } from './components/VerticalResizableSplitter';
+import { BottomPanelSplitter } from './components/BottomPanelSplitter';
 import { TabBar } from './components/TabBar';
 import { CodebaseActions } from './components/CodebaseActions';
 import { RunPane } from './components/RunPane';
+import { UCMTerminal } from './components/UCMTerminal';
+import { GeneralTerminal } from './components/GeneralTerminal';
+import { WelcomeScreen } from './components/WelcomeScreen';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
 import { applyThemeVariables, loadTheme } from './theme/unisonTheme';
 import { buildSingleWatchCode, buildSingleTestCode, buildAllWatchesCode, buildAllTestsCode, getTestName, detectTestExpressions, detectWatchExpressions } from './services/watchExpressionService';
+import { getWorkspaceConfigService } from './services/workspaceConfigService';
+import { getUCMLifecycleService } from './services/ucmLifecycle';
 import './App.css';
 
 function App() {
@@ -28,9 +33,16 @@ function App() {
     isConnected,
     runPaneCollapsed,
     setRunPaneCollapsed,
+    workspaceDirectory,
+    workspaceConfigLoaded,
+    setWorkspaceConfigLoaded,
+    setLinkedProject,
+    addRecentWorkspace,
   } = useUnisonStore();
 
-  const [connectionChecking, setConnectionChecking] = useState(true);
+  // State for showing welcome screen vs main editor
+  const [showWelcome, setShowWelcome] = useState(!workspaceDirectory);
+
   const [selectedDefinition, setSelectedDefinition] = useState<{
     name: string;
     type: 'term' | 'type';
@@ -42,6 +54,11 @@ function App() {
   // Panel collapse states
   const [navPanelCollapsed, setNavPanelCollapsed] = useState(false);
   const [termsPanelCollapsed, setTermsPanelCollapsed] = useState(true);
+
+  // Bottom panel collapse states
+  const [ucmPanelCollapsed, setUcmPanelCollapsed] = useState(false);
+  const [outputPanelCollapsed, setOutputPanelCollapsed] = useState(false);
+  const [terminalPanelCollapsed, setTerminalPanelCollapsed] = useState(true);
 
   // Diagnostic count from the editor (for status indicator)
   const [diagnosticCount, setDiagnosticCount] = useState<DiagnosticCount>({ errors: 0, warnings: 0 });
@@ -56,13 +73,62 @@ function App() {
     applyThemeVariables(theme);
   }, []);
 
-  // Check UCM connection on mount
+  // Initialize workspace configuration when workspace directory changes
   useEffect(() => {
-    checkConnection();
-  }, []);
+    async function initWorkspace() {
+      if (!workspaceDirectory) {
+        setWorkspaceConfigLoaded(false);
+        setShowWelcome(true);
+        return;
+      }
 
-  // Run auto-run immediately when autoRun is toggled on OR when tab changes while autoRun is enabled
+      setShowWelcome(false);
+
+      const configService = getWorkspaceConfigService();
+      const ucmLifecycle = getUCMLifecycleService();
+
+      try {
+        // Create .unison-editor/ if needed
+        if (!(await configService.hasConfig(workspaceDirectory))) {
+          await configService.initWorkspace(workspaceDirectory);
+        }
+
+        // Load config and set linked project
+        const config = await configService.loadConfig(workspaceDirectory);
+        if (config?.linkedProject) {
+          setLinkedProject(config.linkedProject);
+        }
+
+        // Add to recent workspaces
+        addRecentWorkspace(workspaceDirectory);
+
+        // Spawn UCM PTY for this workspace - this happens independently of terminal UI
+        // The UCMTerminal component will connect to this already-running process
+        await ucmLifecycle.spawn(workspaceDirectory);
+
+        setWorkspaceConfigLoaded(true);
+      } catch (error) {
+        console.error('Failed to initialize workspace:', error);
+        setWorkspaceConfigLoaded(true); // Still mark as loaded to allow app to function
+      }
+    }
+
+    initWorkspace();
+  }, [workspaceDirectory, setWorkspaceConfigLoaded, setLinkedProject, addRecentWorkspace]);
+
+  // Check UCM API connection only when workspace config is loaded
+  // This polls the UCM HTTP API to verify UCM is ready to accept commands
   useEffect(() => {
+    if (workspaceConfigLoaded && workspaceDirectory) {
+      checkConnection();
+    }
+  }, [workspaceConfigLoaded, workspaceDirectory]);
+
+  // Run auto-run when autoRun is toggled on OR when tab changes while autoRun is enabled
+  // Tab changes get a 1 second delay to allow large files to load
+  useEffect(() => {
+    let tabSwitchTimeout: number | null = null;
+
     const unsubscribe = useUnisonStore.subscribe(
       (state, prevState) => {
         // Check if autoRun was just turned on (false -> true)
@@ -75,28 +141,52 @@ function App() {
 
         // Check if tab changed while autoRun is enabled
         if (state.autoRun && state.activeTabId !== prevState.activeTabId && state.activeTabId) {
-          const activeTab = state.tabs.find(t => t.id === state.activeTabId);
-          if (activeTab?.content) {
-            handleAutoRun(activeTab.content);
+          // Clear any pending tab switch auto-run
+          if (tabSwitchTimeout) {
+            clearTimeout(tabSwitchTimeout);
           }
+          // Delay auto-run by 1 second when switching tabs (allows large files to load)
+          tabSwitchTimeout = window.setTimeout(() => {
+            const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+            if (activeTab?.content) {
+              handleAutoRun(activeTab.content);
+            }
+          }, 1000);
         }
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (tabSwitchTimeout) {
+        clearTimeout(tabSwitchTimeout);
+      }
+    };
   }, []);
 
-  async function checkConnection() {
-    setConnectionChecking(true);
-    try {
-      const connected = await client.checkConnection();
-      setConnected(connected);
-    } catch (err) {
-      console.error('Failed to check connection:', err);
-      setConnected(false);
-    } finally {
-      setConnectionChecking(false);
+  async function checkConnection(retries = 10, delay = 1000) {
+    // UCM takes a few seconds to start up, so we poll for connection
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const connected = await client.checkConnection();
+        if (connected) {
+          console.log(`UCM connected on attempt ${attempt}`);
+          setConnected(true);
+          return;
+        }
+      } catch (err) {
+        console.log(`Connection attempt ${attempt}/${retries} failed:`, err);
+      }
+
+      // Wait before next attempt (except on last try)
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
+
+    // All retries exhausted
+    console.error('Failed to connect to UCM after all retries');
+    setConnected(false);
   }
 
   function handleOpenDefinition(name: string, type: 'term' | 'type') {
@@ -824,12 +914,12 @@ function App() {
           clearTimeout(autoRunTimeoutRef.current);
         }
 
-        // Debounced auto-run (500ms after typing stops)
+        // Debounced auto-run (1 second after typing stops)
         const { autoRun } = useUnisonStore.getState();
         if (autoRun && isDirty) {
           autoRunTimeoutRef.current = window.setTimeout(async () => {
             await handleAutoRun(value);
-          }, 500);
+          }, 1000);
         }
       }
     }
@@ -862,25 +952,26 @@ function App() {
 
   const activeTab = getActiveTab();
 
+  // Handle workspace ready callback from WelcomeScreen
+  const handleWorkspaceReady = useCallback(() => {
+    setShowWelcome(false);
+  }, []);
+
+  // Show welcome screen when no workspace is selected
+  if (showWelcome) {
+    return <WelcomeScreen onWorkspaceReady={handleWorkspaceReady} />;
+  }
+
   return (
     <div className="app">
       <header className="app-header">
         <h1>Unison Editor</h1>
-        <ProjectBranchSelector />
+        {/* ProjectBranchSelector is now in WorkspaceProjectLinker in the Navigation panel */}
       </header>
 
       <div className="app-body">
-        {connectionChecking ? (
-          <div className="connection-status">Checking connection...</div>
-        ) : !isConnected ? (
-          <div className="connection-error">
-            <h2>Not Connected to UCM</h2>
-            <p>
-              Please ensure UCM is running and accessible at the configured
-              address.
-            </p>
-            <button onClick={checkConnection}>Retry Connection</button>
-          </div>
+        {!workspaceConfigLoaded ? (
+          <div className="connection-status">Loading workspace...</div>
         ) : (
           <ResizableSplitter
             minLeftWidth={200}
@@ -925,11 +1016,12 @@ function App() {
 
                     <VerticalResizableSplitter
                       minTopHeight={150}
-                      minBottomHeight={80}
-                      defaultTopPercent={75}
+                      minBottomHeight={120}
+                      defaultTopPercent={65}
                       bottomCollapsed={runPaneCollapsed}
                       onBottomCollapse={setRunPaneCollapsed}
                       collapsedHeight={32}
+                      collapsedLabel="Panel"
                       top={
                         <div className="editor-container">
                           {activeTab ? (
@@ -955,9 +1047,47 @@ function App() {
                         </div>
                       }
                       bottom={
-                        <RunPane
-                          isCollapsed={runPaneCollapsed}
-                          onToggleCollapse={() => setRunPaneCollapsed(!runPaneCollapsed)}
+                        <BottomPanelSplitter
+                          panels={[
+                            {
+                              id: 'ucm',
+                              label: 'UCM',
+                              component: <UCMTerminal isCollapsed={ucmPanelCollapsed} />,
+                              collapsed: ucmPanelCollapsed,
+                              onCollapse: setUcmPanelCollapsed,
+                              minWidth: 200,
+                              defaultWidth: 40,
+                            },
+                            {
+                              id: 'output',
+                              label: 'Output',
+                              component: (
+                                <RunPane isCollapsed={outputPanelCollapsed} />
+                              ),
+                              collapsed: outputPanelCollapsed,
+                              onCollapse: setOutputPanelCollapsed,
+                              minWidth: 150,
+                              defaultWidth: 35,
+                              headerActions: (
+                                <button
+                                  className="bottom-panel-action-btn"
+                                  onClick={() => useUnisonStore.getState().clearRunOutput()}
+                                  title="Clear output"
+                                >
+                                  Clear
+                                </button>
+                              ),
+                            },
+                            {
+                              id: 'terminal',
+                              label: 'Terminal',
+                              component: <GeneralTerminal isCollapsed={terminalPanelCollapsed} />,
+                              collapsed: terminalPanelCollapsed,
+                              onCollapse: setTerminalPanelCollapsed,
+                              minWidth: 150,
+                              defaultWidth: 25,
+                            },
+                          ]}
                         />
                       }
                     />

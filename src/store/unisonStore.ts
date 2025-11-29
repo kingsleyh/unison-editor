@@ -69,6 +69,11 @@ interface UnisonState {
   workspaceDirectory: string | null;
   recentFiles: string[];
 
+  // Workspace configuration state
+  linkedProject: string | null;
+  workspaceConfigLoaded: boolean;
+  recentWorkspaces: string[];
+
   // Namespace browser refresh trigger
   namespaceVersion: number;
 
@@ -109,6 +114,12 @@ interface UnisonState {
   // File system actions
   setWorkspaceDirectory: (directory: string | null) => void;
   addRecentFile: (filePath: string) => void;
+
+  // Workspace configuration actions
+  setLinkedProject: (project: string | null) => void;
+  setWorkspaceConfigLoaded: (loaded: boolean) => void;
+  addRecentWorkspace: (path: string) => void;
+  clearWorkspaceState: () => void;
 
   // Namespace actions
   refreshNamespace: () => void;
@@ -152,6 +163,11 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
 
   workspaceDirectory: localStorage.getItem('workspaceDirectory') || null,
   recentFiles: JSON.parse(localStorage.getItem('recentFiles') || '[]'),
+
+  // Workspace configuration state
+  linkedProject: null, // Loaded from workspace config file
+  workspaceConfigLoaded: false,
+  recentWorkspaces: JSON.parse(localStorage.getItem('recentWorkspaces') || '[]'),
 
   namespaceVersion: 0,
   definitionsVersion: 0,
@@ -245,6 +261,39 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
 
       localStorage.setItem('recentFiles', JSON.stringify(recentFiles));
       return { recentFiles };
+    }),
+
+  // Workspace configuration actions
+  setLinkedProject: (project) => set({ linkedProject: project }),
+
+  setWorkspaceConfigLoaded: (loaded) => set({ workspaceConfigLoaded: loaded }),
+
+  addRecentWorkspace: (path) =>
+    set((state) => {
+      const recentWorkspaces = [
+        path,
+        ...state.recentWorkspaces.filter((w) => w !== path),
+      ].slice(0, 10); // Keep only last 10 workspaces
+
+      localStorage.setItem('recentWorkspaces', JSON.stringify(recentWorkspaces));
+      return { recentWorkspaces };
+    }),
+
+  clearWorkspaceState: () =>
+    set({
+      linkedProject: null,
+      workspaceConfigLoaded: false,
+      tabs: [],
+      activeTabId: null,
+      definitionCards: [],
+      selectedCardId: null,
+      runOutput: null,
+      // Clear project/branch state so new workspace can set its own
+      currentProject: null,
+      currentBranch: null,
+      projects: [],
+      branches: [],
+      isConnected: false,
     }),
 
   // Namespace actions

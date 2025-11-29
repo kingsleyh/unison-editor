@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FileExplorer } from './FileExplorer';
 import { NamespaceBrowser } from './NamespaceBrowser';
-import { WorkspaceSelector } from './WorkspaceSelector';
+import { WorkspaceProjectLinker } from './WorkspaceProjectLinker';
 import { FileCreationModal } from './FileCreationModal';
 import { VerticalResizableSplitter } from './VerticalResizableSplitter';
 import { useUnisonStore } from '../store/unisonStore';
@@ -77,8 +77,6 @@ export function Navigation({ onFileClick, onDefinitionClick, revealInTree }: Nav
       </div>
       {localFilesExpanded && (
         <div className="nav-section-content">
-          <WorkspaceSelector />
-
           <div className="file-actions">
             <button
               className="btn-new-file"
@@ -141,6 +139,8 @@ export function Navigation({ onFileClick, onDefinitionClick, revealInTree }: Nav
 
   return (
     <div className="navigation">
+      <WorkspaceProjectLinker />
+
       <VerticalResizableSplitter
         top={localFilesSection}
         bottom={codebaseSection}

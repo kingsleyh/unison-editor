@@ -340,6 +340,33 @@ impl MCPClient {
         }
     }
 
+    /// Switch UCM's project/branch context
+    ///
+    /// This uses the typecheck-code tool with empty code to switch
+    /// UCM's internal context to the specified project/branch.
+    /// This ensures the LSP and other UCM operations use the correct context.
+    pub fn switch_context(
+        &mut self,
+        project_name: &str,
+        branch_name: &str,
+    ) -> Result<(), String> {
+        // Use typecheck-code with empty source to trigger context switch
+        // All MCP tools with projectContext will switch UCM's internal context
+        let arguments = json!({
+            "projectContext": {
+                "projectName": project_name,
+                "branchName": branch_name
+            },
+            "code": {
+                "sourceCode": ""
+            }
+        });
+
+        // We don't care about the result, just need the context switch side-effect
+        let _response = self.call_tool("typecheck-code", arguments)?;
+        Ok(())
+    }
+
     /// Run tests from the codebase
     ///
     /// This calls the "run-tests" MCP tool to run tests that are already

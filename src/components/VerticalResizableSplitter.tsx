@@ -9,6 +9,7 @@ interface VerticalResizableSplitterProps {
   bottomCollapsed?: boolean;
   onBottomCollapse?: (collapsed: boolean) => void;
   collapsedHeight?: number; // Height of the collapsed bar
+  collapsedLabel?: string; // Label to show when collapsed
 }
 
 export function VerticalResizableSplitter({
@@ -20,6 +21,7 @@ export function VerticalResizableSplitter({
   bottomCollapsed = false,
   onBottomCollapse,
   collapsedHeight = 32,
+  collapsedLabel = 'Panel',
 }: VerticalResizableSplitterProps) {
   const [topPercent, setTopPercent] = useState(defaultTopPercent);
   const [isDragging, setIsDragging] = useState(false);
@@ -106,6 +108,13 @@ export function VerticalResizableSplitter({
 
   const { topHeight, bottomHeight } = getHeights();
 
+  // Handle click on collapsed bar to expand
+  const handleCollapsedClick = () => {
+    if (bottomCollapsed && onBottomCollapse) {
+      onBottomCollapse(false);
+    }
+  };
+
   return (
     <div ref={containerRef} className="vertical-resizable-container">
       <div className="vertical-resizable-top" style={{ height: topHeight }}>
@@ -119,7 +128,18 @@ export function VerticalResizableSplitter({
         className={`vertical-resizable-bottom ${bottomCollapsed ? 'collapsed' : ''}`}
         style={{ height: bottomHeight }}
       >
-        {bottom}
+        {bottomCollapsed ? (
+          <div
+            className="vertical-collapsed-bar"
+            onClick={handleCollapsedClick}
+            title={`Click to expand ${collapsedLabel}`}
+          >
+            <span className="vertical-collapsed-icon">&#9650;</span>
+            <span className="vertical-collapsed-label">{collapsedLabel}</span>
+          </div>
+        ) : (
+          bottom
+        )}
       </div>
     </div>
   );

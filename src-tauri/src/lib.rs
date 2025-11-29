@@ -2,6 +2,7 @@ mod commands;
 mod mcp_client;
 mod ucm_api;
 mod lsp_proxy;
+mod ucm_pty;
 
 use commands::{AppState, LSPConnection};
 use lsp_proxy::LspProxy;
@@ -19,9 +20,11 @@ pub fn run() {
         )?;
       }
 
+      // UCM PTY is now spawned on-demand by the frontend via ucm_pty_spawn command
+      // This allows passing the workspace directory for proper file loading
+
       // Start LSP WebSocket proxy server in Tauri's async runtime
       // WebSocket on port 5758, proxying to UCM LSP on port 5757
-      let app_handle = app.handle().clone();
       tauri::async_runtime::spawn(async move {
         let proxy = Arc::new(LspProxy::new(5758, "127.0.0.1".to_string(), 5757));
         log::info!("LSP WebSocket proxy starting on port 5758");
@@ -54,6 +57,7 @@ pub fn run() {
       commands::delete_file,
       commands::rename_file,
       commands::file_exists,
+      commands::switch_project_branch,
       commands::ucm_update,
       commands::ucm_typecheck,
       commands::ucm_run_tests,
@@ -62,6 +66,12 @@ pub fn run() {
       commands::lsp_connect,
       commands::lsp_disconnect,
       commands::lsp_send_request,
+      // UCM PTY commands for integrated terminal
+      commands::ucm_pty_spawn,
+      commands::ucm_pty_write,
+      commands::ucm_pty_resize,
+      commands::ucm_pty_get_context,
+      commands::ucm_pty_switch_context,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
