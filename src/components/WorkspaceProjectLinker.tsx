@@ -6,10 +6,14 @@ import { useUnisonStore } from '../store/unisonStore';
 import { getUCMApiClient } from '../services/ucmApi';
 import { ucmContext } from '../services/ucmContext';
 import { WorkspaceSetupDialog } from './WorkspaceSetupDialog';
+import { getLSPService } from '../services/lspService';
+import { getUCMLifecycleService } from '../services/ucmLifecycle';
 import {
   getWorkspaceConfigService,
   type WorkspaceConfig,
 } from '../services/workspaceConfigService';
+
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
 
 interface UCMContext {
   project: string;
@@ -43,7 +47,14 @@ export function WorkspaceProjectLinker() {
   const [showSetupDialog, setShowSetupDialog] = useState(false);
   const [pendingFolderPath, setPendingFolderPath] = useState<string | null>(null);
 
+  // Connection status for each service
+  const [ucmStatus, setUcmStatus] = useState<ConnectionStatus>('disconnected');
+  const [lspStatus, setLspStatus] = useState<ConnectionStatus>('disconnected');
+  const [mcpStatus, setMcpStatus] = useState<ConnectionStatus>('disconnected');
+
   const client = getUCMApiClient();
+  const lspService = getLSPService();
+  const ucmLifecycle = getUCMLifecycleService();
 
   // Listen for UCM context changes from the terminal
   useEffect(() => {
@@ -73,6 +84,85 @@ export function WorkspaceProjectLinker() {
       if (unlisten) unlisten();
     };
   }, [projects, branches, currentProject, currentBranch, setCurrentProject, setCurrentBranch]);
+
+  // Track UCM API connection status
+  useEffect(() => {
+    if (!workspaceDirectory) {
+      setUcmStatus('disconnected');
+      return;
+    }
+
+    // UCM lifecycle status
+    const ucmLifecycleStatus = ucmLifecycle.getStatus();
+    if (ucmLifecycleStatus === 'running' && isConnected) {
+      setUcmStatus('connected');
+    } else if (ucmLifecycleStatus === 'spawning' || (ucmLifecycleStatus === 'running' && !isConnected)) {
+      setUcmStatus('connecting');
+    } else {
+      setUcmStatus('disconnected');
+    }
+
+    // Subscribe to UCM lifecycle changes
+    const unsubscribe = ucmLifecycle.onStatusChange((status) => {
+      if (status === 'running' && isConnected) {
+        setUcmStatus('connected');
+      } else if (status === 'spawning' || status === 'running') {
+        setUcmStatus('connecting');
+      } else {
+        setUcmStatus('disconnected');
+      }
+    });
+
+    return unsubscribe;
+  }, [workspaceDirectory, isConnected, ucmLifecycle]);
+
+  // Track LSP connection status
+  // LSP connects lazily when editor features need it, so we actively try to connect
+  useEffect(() => {
+    if (!workspaceDirectory) {
+      setLspStatus('disconnected');
+      return;
+    }
+
+    // Check current LSP status
+    setLspStatus(lspService.connected ? 'connected' : 'disconnected');
+
+    // Subscribe to LSP connection changes
+    const unsubscribe = lspService.onConnectionChange((connected) => {
+      setLspStatus(connected ? 'connected' : 'disconnected');
+    });
+
+    // If UCM is connected but LSP isn't, try to connect LSP
+    // LSP runs on UCM's LSP server (port 5757 by default)
+    if (isConnected && !lspService.connected) {
+      setLspStatus('connecting');
+      lspService.connect().catch((err) => {
+        console.log('[WorkspaceProjectLinker] LSP connection failed (may retry):', err);
+        // LSP service has its own retry logic
+      });
+    }
+
+    return unsubscribe;
+  }, [workspaceDirectory, lspService, isConnected]);
+
+  // Track MCP status
+  // MCP is available on-demand via `ucm mcp` subprocess when UCM is installed
+  // We consider it "connected" when UCM is connected, since MCP operations will work
+  useEffect(() => {
+    if (!workspaceDirectory) {
+      setMcpStatus('disconnected');
+      return;
+    }
+
+    // MCP is available when UCM is connected (it's an on-demand subprocess)
+    // We could verify by doing a test call, but for now we assume it's available
+    // when UCM API is available since they both require UCM to be running
+    if (isConnected) {
+      setMcpStatus('connected');
+    } else {
+      setMcpStatus('disconnected');
+    }
+  }, [workspaceDirectory, isConnected]);
 
   // Load projects on connect
   useEffect(() => {
@@ -215,12 +305,16 @@ export function WorkspaceProjectLinker() {
     });
 
     if (selected && typeof selected === 'string') {
+      // Stop the current UCM process before switching workspaces
+      // This ensures UCM restarts with the new workspace's cwd
+      await ucmLifecycle.stop();
+
       clearWorkspaceState();
       setWorkspaceDirectory(selected);
       addRecentWorkspace(selected);
-      // App.tsx will handle workspace initialization
+      // App.tsx will handle workspace initialization (spawning UCM with new cwd)
     }
-  }, [clearWorkspaceState, setWorkspaceDirectory, addRecentWorkspace]);
+  }, [clearWorkspaceState, setWorkspaceDirectory, addRecentWorkspace, ucmLifecycle]);
 
   // Create a new workspace with setup dialog
   const handleNewWorkspace = useCallback(async () => {
@@ -237,15 +331,21 @@ export function WorkspaceProjectLinker() {
   }, []);
 
   // Handle setup dialog completion
-  const handleSetupComplete = useCallback(() => {
+  const handleSetupComplete = useCallback(async () => {
     if (pendingFolderPath) {
+      // Stop the current UCM process before switching workspaces
+      // Note: WorkspaceSetupDialog may have already spawned UCM for project creation
+      // but we still clear state here for consistency
+      await ucmLifecycle.stop();
+
       clearWorkspaceState();
       setWorkspaceDirectory(pendingFolderPath);
       addRecentWorkspace(pendingFolderPath);
+      // App.tsx will handle workspace initialization (spawning UCM with new cwd)
     }
     setShowSetupDialog(false);
     setPendingFolderPath(null);
-  }, [pendingFolderPath, clearWorkspaceState, setWorkspaceDirectory, addRecentWorkspace]);
+  }, [pendingFolderPath, clearWorkspaceState, setWorkspaceDirectory, addRecentWorkspace, ucmLifecycle]);
 
   // Handle setup dialog cancellation
   const handleSetupCancel = useCallback(() => {
@@ -303,51 +403,61 @@ export function WorkspaceProjectLinker() {
             {linkedProject && <span className="linked-badge">LINKED</span>}
           </div>
 
-          {!isConnected ? (
-            <div className="ucm-status disconnected">
-              <span className="status-dot offline"></span>
-              <span>Connecting to UCM...</span>
-            </div>
-          ) : (
-            <div className="project-branch-controls">
-              <div className="control-row">
-                <label>Project</label>
-                <select
-                  value={currentProject?.name || ''}
-                  onChange={handleProjectChange}
-                  disabled={loading || projects.length === 0}
-                >
-                  {projects.length === 0 && <option value="">No projects</option>}
-                  {projects.map((project) => (
-                    <option key={project.name} value={project.name}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="project-branch-controls">
+            {isConnected ? (
+              <>
+                <div className="control-row">
+                  <label>Project</label>
+                  <select
+                    value={currentProject?.name || ''}
+                    onChange={handleProjectChange}
+                    disabled={loading || projects.length === 0}
+                  >
+                    {projects.length === 0 && <option value="">No projects</option>}
+                    {projects.map((project) => (
+                      <option key={project.name} value={project.name}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="control-row">
-                <label>Branch</label>
-                <select
-                  value={currentBranch?.name || ''}
-                  onChange={handleBranchChange}
-                  disabled={loading || branches.length === 0 || !currentProject}
-                >
-                  {branches.length === 0 && <option value="">No branches</option>}
-                  {branches.map((branch) => (
-                    <option key={branch.name} value={branch.name}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="control-row">
+                  <label>Branch</label>
+                  <select
+                    value={currentBranch?.name || ''}
+                    onChange={handleBranchChange}
+                    disabled={loading || branches.length === 0 || !currentProject}
+                  >
+                    {branches.length === 0 && <option value="">No branches</option>}
+                    {branches.map((branch) => (
+                      <option key={branch.name} value={branch.name}>
+                        {branch.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <div className="connecting-message">Connecting...</div>
+            )}
 
-              <div className="ucm-status connected">
-                <span className="status-dot online"></span>
-                <span>Connected</span>
+            {/* Service status indicators */}
+            <div className="service-status-row">
+              <div className={`service-indicator ${ucmStatus}`} title={`UCM: ${ucmStatus}`}>
+                <span className="service-dot"></span>
+                <span className="service-label">UCM</span>
+              </div>
+              <div className={`service-indicator ${lspStatus}`} title={`LSP: ${lspStatus}`}>
+                <span className="service-dot"></span>
+                <span className="service-label">LSP</span>
+              </div>
+              <div className={`service-indicator ${mcpStatus}`} title={`MCP: ${mcpStatus}`}>
+                <span className="service-dot"></span>
+                <span className="service-label">MCP</span>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
 

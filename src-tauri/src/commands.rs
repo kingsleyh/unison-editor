@@ -718,3 +718,20 @@ pub fn ucm_pty_switch_context(
 
     manager.switch_context(&project, &branch)
 }
+
+/// Kill the UCM PTY process
+/// This should be called before spawning a new UCM PTY with a different working directory
+#[tauri::command]
+pub fn ucm_pty_kill(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut pty_guard = state.ucm_pty.lock().unwrap();
+
+    if let Some(manager) = pty_guard.take() {
+        log::info!("Killing UCM PTY");
+        manager.stop();
+        // The manager will be dropped here, which also calls stop()
+    }
+
+    Ok(())
+}

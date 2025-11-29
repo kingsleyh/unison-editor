@@ -168,17 +168,20 @@ class UCMLifecycleService {
     }
 
     try {
+      console.log('[UCMLifecycle] Stopping UCM PTY');
+
       // Clean up output listener
       if (this.unlistenOutput) {
         this.unlistenOutput();
         this.unlistenOutput = null;
       }
 
-      // TODO: Add ucm_pty_kill command if needed
-      // await invoke('ucm_pty_kill');
+      // Kill the UCM PTY process on the backend
+      await invoke('ucm_pty_kill');
 
       this.notifyStatusChange('stopped');
       this.state.workspaceDirectory = null;
+      console.log('[UCMLifecycle] UCM PTY stopped');
     } catch (err) {
       console.error('[UCMLifecycle] Failed to stop UCM PTY:', err);
     }

@@ -964,11 +964,6 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>Unison Editor</h1>
-        {/* ProjectBranchSelector is now in WorkspaceProjectLinker in the Navigation panel */}
-      </header>
-
       <div className="app-body">
         {!workspaceConfigLoaded ? (
           <div className="connection-status">Loading workspace...</div>

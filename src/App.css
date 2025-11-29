@@ -75,10 +75,17 @@ body {
   padding: 4px 8px;
   background-color: #3c3c3c;
   border: 1px solid #3e3e42;
-  border-radius: 2px;
+  border-radius: 0;
   color: #cccccc;
   font-size: 13px;
   cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23858585' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
 }
 
 .selector-group select:disabled {
@@ -586,10 +593,21 @@ body {
   padding: 8px 12px;
   background-color: #3c3c3c;
   border: 1px solid #3e3e42;
-  border-radius: 2px;
+  border-radius: 0;
   color: #cccccc;
   font-size: 13px;
   font-family: inherit;
+}
+
+.form-group select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23858585' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+  cursor: pointer;
 }
 
 .form-group input:focus,
@@ -3080,9 +3098,19 @@ body {
   padding: 4px 8px;
   background-color: #3c3c3c;
   border: 1px solid #3e3e42;
-  border-radius: 4px;
+  border-radius: 0;
   color: #cccccc;
   font-size: 13px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.radio-option .project-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23858585' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
 }
 
 .radio-option .project-select {
@@ -3273,10 +3301,17 @@ body {
   padding: 4px 8px;
   background-color: #3c3c3c;
   border: 1px solid #3e3e42;
-  border-radius: 4px;
+  border-radius: 0;
   color: #cccccc;
   font-size: 12px;
   cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23858585' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
 }
 
 .control-row select:disabled {
@@ -3317,4 +3352,205 @@ body {
 
 .ucm-status.disconnected .status-dot {
   background-color: #858585;
+}
+
+/* =================================================
+   Service Status Indicators (UCM, LSP, MCP)
+   ================================================= */
+
+.service-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #3e3e42;
+}
+
+.service-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.service-indicator .service-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: background-color 0.3s ease;
+}
+
+.service-indicator .service-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #858585;
+}
+
+/* Connected state - teal green */
+.service-indicator.connected .service-dot {
+  background-color: #4ec9b0;
+  box-shadow: 0 0 4px rgba(78, 201, 176, 0.5);
+}
+
+/* Disconnected state - red */
+.service-indicator.disconnected .service-dot {
+  background-color: #f48771;
+}
+
+/* Connecting state - orange/amber */
+.service-indicator.connecting .service-dot {
+  background-color: #dcdcaa;
+  animation: pulse-connecting 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-connecting {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 4px rgba(220, 220, 170, 0.3);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 8px rgba(220, 220, 170, 0.6);
+  }
+}
+
+.connecting-message {
+  font-size: 12px;
+  color: #858585;
+  font-style: italic;
+}
+
+/* ============================================
+   Collapsible Panel Stack
+   ============================================ */
+
+.collapsible-panel-stack {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Resizable area containing file explorer and UCM explorer */
+.resizable-panel-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.collapsible-panel {
+  display: flex;
+  flex-direction: column;
+  background-color: #252526;
+  overflow: hidden;
+}
+
+/* Fixed height panels (workspace) - size to content */
+.collapsible-panel.fixed-height {
+  flex-shrink: 0;
+}
+
+.collapsible-panel.fixed-height.collapsed {
+  /* Just show the header when collapsed */
+}
+
+/* Resizable panels */
+.collapsible-panel.resizable {
+  min-height: 0;
+}
+
+.collapsible-panel.resizable.collapsed {
+  flex: 0 0 auto !important;
+}
+
+.collapsible-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #2d2d30;
+  border-bottom: 1px solid #3e3e42;
+  user-select: none;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.collapsible-panel-header:hover {
+  background-color: #37373d;
+}
+
+.collapsible-panel.collapsed .collapsible-panel-header {
+  border-bottom: none;
+}
+
+.collapsible-panel-chevron {
+  font-size: 8px;
+  color: #858585;
+  width: 10px;
+  text-align: center;
+}
+
+.collapsible-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbbbbb;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.collapsible-panel-content {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.collapsible-panel-divider {
+  height: 4px;
+  background-color: #1e1e1e;
+  cursor: row-resize;
+  flex-shrink: 0;
+  transition: background-color 0.1s;
+}
+
+.collapsible-panel-divider:hover,
+.collapsible-panel-divider.dragging {
+  background-color: #007acc;
+}
+
+/* File explorer panel content wrapper */
+.file-explorer-panel-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.file-explorer-panel-content .file-actions {
+  padding: 8px 12px;
+  border-bottom: 1px solid #3e3e42;
+  flex-shrink: 0;
+}
+
+.file-explorer-panel-content .file-filter {
+  padding: 8px 12px;
+  border-bottom: 1px solid #3e3e42;
+  flex-shrink: 0;
+}
+
+.file-explorer-panel-content .file-error {
+  padding: 8px 12px;
+  background-color: rgba(244, 135, 113, 0.1);
+  border-bottom: 1px solid #3e3e42;
+  flex-shrink: 0;
+}
+
+.file-explorer-panel-content .file-explorer {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
 }

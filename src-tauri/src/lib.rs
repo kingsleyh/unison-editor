@@ -72,6 +72,7 @@ pub fn run() {
       commands::ucm_pty_resize,
       commands::ucm_pty_get_context,
       commands::ucm_pty_switch_context,
+      commands::ucm_pty_kill,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
