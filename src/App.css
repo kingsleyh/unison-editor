@@ -3432,6 +3432,8 @@ body {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  gap: 1px;
+  background-color: #1e1e1e;
 }
 
 /* Resizable area containing file explorer and UCM explorer */
@@ -3441,6 +3443,8 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  gap: 1px;
+  background-color: #1e1e1e;
 }
 
 .collapsible-panel {
@@ -3453,10 +3457,6 @@ body {
 /* Fixed height panels (workspace) - size to content */
 .collapsible-panel.fixed-height {
   flex-shrink: 0;
-}
-
-.collapsible-panel.fixed-height.collapsed {
-  /* Just show the header when collapsed */
 }
 
 /* Resizable panels */
@@ -3473,19 +3473,54 @@ body {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background-color: #2d2d30;
-  border-bottom: 1px solid #3e3e42;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   user-select: none;
   flex-shrink: 0;
   cursor: pointer;
-}
-
-.collapsible-panel-header:hover {
-  background-color: #37373d;
+  transition: background-color 0.1s;
 }
 
 .collapsible-panel.collapsed .collapsible-panel-header {
   border-bottom: none;
+}
+
+/* Workspace panel - lightest gray */
+.collapsible-panel.fixed-height {
+  background-color: #2d2d2d;
+}
+
+.collapsible-panel.fixed-height .collapsible-panel-header {
+  background-color: #383838;
+}
+
+.collapsible-panel.fixed-height .collapsible-panel-header:hover {
+  background-color: #424242;
+}
+
+/* File Explorer panel - medium gray */
+.resizable-panel-area > .collapsible-panel:first-child {
+  background-color: #252526;
+}
+
+.resizable-panel-area > .collapsible-panel:first-child .collapsible-panel-header {
+  background-color: #303031;
+}
+
+.resizable-panel-area > .collapsible-panel:first-child .collapsible-panel-header:hover {
+  background-color: #3a3a3b;
+}
+
+/* UCM Explorer panel - darkest gray */
+.resizable-panel-area > .collapsible-panel:last-child {
+  background-color: #1e1e1e;
+}
+
+.resizable-panel-area > .collapsible-panel:last-child .collapsible-panel-header {
+  background-color: #282828;
+}
+
+.resizable-panel-area > .collapsible-panel:last-child .collapsible-panel-header:hover {
+  background-color: #323232;
 }
 
 .collapsible-panel-chevron {
@@ -3498,7 +3533,7 @@ body {
 .collapsible-panel-title {
   font-size: 11px;
   font-weight: 600;
-  color: #bbbbbb;
+  color: #cccccc;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }

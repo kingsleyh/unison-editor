@@ -363,7 +363,6 @@ export function WorkspaceProjectLinker() {
       <div className="workspace-project-linker">
         {/* Workspace Section */}
         <div className="linker-section">
-          <div className="linker-header">WORKSPACE</div>
           <div className="workspace-info">
             <svg
               className="folder-icon"
