@@ -20,6 +20,43 @@ interface NavigationProps {
   onAddToScratch?: (content: string) => void;
 }
 
+/**
+ * Collected items from a namespace, tracking types separately for accessor filtering
+ */
+interface CollectedItems {
+  terms: string[];           // FQNs of terms (will be filtered)
+  types: string[];           // FQNs of types
+  accessorPrefixes: Set<string>;  // Type FQNs that may have auto-generated accessors
+}
+
+/**
+ * Check if a term is an auto-generated record accessor.
+ *
+ * Unison generates accessors for record fields:
+ * - TypeName.fieldName (getter)
+ * - TypeName.fieldName.set (setter)
+ * - TypeName.fieldName.modify (modifier)
+ */
+function isRecordAccessor(termFQN: string, accessorPrefixes: Set<string>): boolean {
+  for (const typePrefix of accessorPrefixes) {
+    // Check if term starts with TypeName.
+    if (termFQN.startsWith(typePrefix + '.')) {
+      const remainder = termFQN.slice(typePrefix.length + 1);
+      // remainder is "fieldName" or "fieldName.set" or "fieldName.modify"
+
+      // If it's a simple identifier (no dots), it's a getter
+      if (!remainder.includes('.')) {
+        return true;
+      }
+      // If it ends with .set or .modify, it's a setter/modifier
+      if (remainder.endsWith('.set') || remainder.endsWith('.modify')) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function Navigation({
   onFileClick,
   onDefinitionClick,
@@ -42,12 +79,15 @@ export function Navigation({
   const ucmApi = getUCMApiClient();
 
   /**
-   * Recursively collect all term/type FQNs from a namespace
+   * Recursively collect all term/type FQNs from a namespace,
+   * tracking types separately for accessor filtering
    */
   const collectNamespaceItems = useCallback(async (
     namespacePath: string
-  ): Promise<string[]> => {
-    if (!currentProject || !currentBranch) return [];
+  ): Promise<CollectedItems> => {
+    if (!currentProject || !currentBranch) {
+      return { terms: [], types: [], accessorPrefixes: new Set() };
+    }
 
     const items = await ucmApi.listNamespace(
       currentProject.name,
@@ -55,52 +95,88 @@ export function Navigation({
       namespacePath
     );
 
-    const fqns: string[] = [];
+    const result: CollectedItems = {
+      terms: [],
+      types: [],
+      accessorPrefixes: new Set()
+    };
 
     for (const item of items) {
       const fullPath = namespacePath === '.'
         ? item.name
         : `${namespacePath}.${item.name}`;
 
-      if (item.type === 'term' || item.type === 'type') {
-        fqns.push(fullPath);
+      if (item.type === 'type') {
+        result.types.push(fullPath);
+        // Mark this type's name as an accessor prefix
+        result.accessorPrefixes.add(fullPath);
+      } else if (item.type === 'term') {
+        result.terms.push(fullPath);
       } else if (item.type === 'namespace') {
         // Recursively collect from sub-namespaces
         const subItems = await collectNamespaceItems(fullPath);
-        fqns.push(...subItems);
+        result.terms.push(...subItems.terms);
+        result.types.push(...subItems.types);
+        subItems.accessorPrefixes.forEach(p => result.accessorPrefixes.add(p));
       }
     }
 
-    return fqns;
+    return result;
   }, [currentProject, currentBranch, ucmApi]);
 
   /**
-   * Handle "Add to Scratch" for selected namespace items
+   * Handle "Add to Scratch" for selected namespace items.
+   * Filters out auto-generated record accessors to avoid conflicts.
    */
   const handleAddToScratch = useCallback(async (nodes: TreeNode[]) => {
     if (!onAddToScratch || !currentProject || !currentBranch) return;
 
     try {
-      // Collect FQNs from all selected items
-      const allFqns: string[] = [];
+      // Collect items, tracking types separately for accessor filtering
+      const allItems: CollectedItems = {
+        terms: [],
+        types: [],
+        accessorPrefixes: new Set()
+      };
       const sourceLabels: string[] = [];
 
       for (const node of nodes) {
-        if (node.type === 'term' || node.type === 'type') {
-          allFqns.push(node.fullPath);
+        if (node.type === 'term') {
+          allItems.terms.push(node.fullPath);
+          sourceLabels.push(`-- from ${node.fullPath}`);
+        } else if (node.type === 'type') {
+          allItems.types.push(node.fullPath);
+          allItems.accessorPrefixes.add(node.fullPath);
           sourceLabels.push(`-- from ${node.fullPath}`);
         } else if (node.type === 'namespace') {
           // Recursively collect all terms/types from the namespace
-          const namespaceFqns = await collectNamespaceItems(node.fullPath);
-          allFqns.push(...namespaceFqns);
-          sourceLabels.push(`-- from namespace ${node.fullPath} (${namespaceFqns.length} items)`);
+          const namespaceItems = await collectNamespaceItems(node.fullPath);
+          allItems.terms.push(...namespaceItems.terms);
+          allItems.types.push(...namespaceItems.types);
+          namespaceItems.accessorPrefixes.forEach(p => allItems.accessorPrefixes.add(p));
+          sourceLabels.push(`-- from namespace ${node.fullPath}`);
         }
       }
+
+      // Filter out auto-generated record accessors
+      const filteredTerms = allItems.terms.filter(
+        term => !isRecordAccessor(term, allItems.accessorPrefixes)
+      );
+
+      const accessorsFiltered = allItems.terms.length - filteredTerms.length;
+
+      // Combine types and filtered terms
+      const allFqns = [...allItems.types, ...filteredTerms];
 
       if (allFqns.length === 0) {
         console.warn('No terms or types found for scratch');
         return;
       }
+
+      // Add summary of what was collected
+      const summaryComment = accessorsFiltered > 0
+        ? `\n-- (${allItems.types.length} types, ${filteredTerms.length} terms, ${accessorsFiltered} auto-generated accessors filtered)`
+        : '';
 
       // Get definition sources using view-definitions
       const sources = await ucmApi.viewDefinitions(
@@ -110,7 +186,7 @@ export function Navigation({
       );
 
       // Format with comment header
-      const formattedContent = sourceLabels.join('\n') + '\n\n' + sources;
+      const formattedContent = sourceLabels.join('\n') + summaryComment + '\n\n' + sources;
 
       onAddToScratch(formattedContent);
     } catch (err) {

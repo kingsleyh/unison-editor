@@ -826,6 +826,34 @@ function App() {
     }
   }
 
+  /**
+   * Helper to trigger autosave for a tab after content is programmatically added
+   */
+  async function triggerAutoSaveForTab(tabId: string) {
+    // Small delay to ensure state is updated
+    setTimeout(async () => {
+      // Get fresh state from store to avoid stale closure
+      const { tabs: currentTabs, updateTab: storeUpdateTab } = useUnisonStore.getState();
+      const tab = currentTabs.find(t => t.id === tabId);
+      if (tab?.filePath && tab.isDirty) {
+        try {
+          storeUpdateTab(tabId, { saveStatus: 'saving' });
+          const { getFileSystemService } = await import('./services/fileSystem');
+          const fileSystemService = getFileSystemService();
+          await fileSystemService.writeFile(tab.filePath, tab.content);
+          storeUpdateTab(tabId, { isDirty: false, saveStatus: 'saved' });
+          // Clear saved indicator after 3 seconds
+          setTimeout(() => {
+            useUnisonStore.getState().updateTab(tabId, { saveStatus: undefined });
+          }, 3000);
+        } catch (err) {
+          console.error('Auto-save failed:', err);
+          useUnisonStore.getState().updateTab(tabId, { saveStatus: undefined });
+        }
+      }
+    }, 100);
+  }
+
   function handleAddToScratch(source: string, name: string) {
     const activeTab = getActiveTab();
 
@@ -836,6 +864,8 @@ function App() {
         content: newContent,
         isDirty: true,
       });
+      // Trigger autosave
+      triggerAutoSaveForTab(activeTab.id);
     } else {
       // Create new scratch file with the definition
       const newTab: EditorTab = {
@@ -863,6 +893,8 @@ function App() {
         content: newContent,
         isDirty: true,
       });
+      // Trigger autosave
+      triggerAutoSaveForTab(activeTab.id);
     } else {
       // Create new scratch file
       const newTab: EditorTab = {
