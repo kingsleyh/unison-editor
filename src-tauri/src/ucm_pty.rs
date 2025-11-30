@@ -86,6 +86,35 @@ impl UCMPtyManager {
         cmd.arg("--port");
         cmd.arg(api_port.to_string());
 
+        // Set PATH environment variable to include common installation locations
+        // GUI apps on macOS don't inherit the user's shell PATH, so we need to set it explicitly
+        let path_additions = vec![
+            "/opt/homebrew/bin",      // Homebrew on Apple Silicon
+            "/usr/local/bin",         // Homebrew on Intel / common install location
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ];
+
+        // Also include user's home directory bin locations
+        let mut all_paths = path_additions.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        if let Some(home) = dirs::home_dir() {
+            all_paths.insert(0, format!("{}/.local/bin", home.display()));
+            all_paths.insert(0, format!("{}/bin", home.display()));
+        }
+
+        // Get existing PATH and append our additions
+        let existing_path = std::env::var("PATH").unwrap_or_default();
+        let new_path = if existing_path.is_empty() {
+            all_paths.join(":")
+        } else {
+            format!("{}:{}", all_paths.join(":"), existing_path)
+        };
+
+        log::info!("Setting UCM PATH to: {}", new_path);
+        cmd.env("PATH", new_path);
+
         // Set working directory if provided, otherwise use home directory
         if let Some(dir) = cwd {
             log::info!("Setting UCM working directory to: {}", dir);
