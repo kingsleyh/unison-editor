@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { DefinitionSummary } from '../types/syntax';
 import type { ResolvedDefinition } from '../types/navigation';
+import { DEFAULT_LAYOUT, type LayoutState } from '../services/workspaceConfigService';
 
 export interface Project {
   name: string;
@@ -95,6 +96,9 @@ interface UnisonState {
   definitionCards: DefinitionCardState[];
   selectedCardId: string | null;
 
+  // Layout state (persisted per-workspace)
+  layout: LayoutState;
+
   // Actions
   setConnection: (host: string, port: number, lspPort: number) => void;
   setConnected: (connected: boolean) => void;
@@ -142,6 +146,10 @@ interface UnisonState {
   removeDefinitionCard: (cardId: string) => void;
   setSelectedCardId: (cardId: string | null) => void;
   getDefinitionCards: () => DefinitionCardState[];
+
+  // Layout actions
+  setLayout: (layout: Partial<LayoutState>) => void;
+  resetLayout: () => void;
 }
 
 export const useUnisonStore = create<UnisonState>((set, get) => ({
@@ -182,6 +190,9 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   // Definition cards state
   definitionCards: [],
   selectedCardId: null,
+
+  // Layout state - initialized with defaults
+  layout: { ...DEFAULT_LAYOUT },
 
   // Actions
   setConnection: (host, port, lspPort) =>
@@ -294,6 +305,8 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
       projects: [],
       branches: [],
       isConnected: false,
+      // Reset layout to defaults
+      layout: { ...DEFAULT_LAYOUT },
     }),
 
   // Namespace actions
@@ -342,4 +355,12 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   setSelectedCardId: (cardId) => set({ selectedCardId: cardId }),
 
   getDefinitionCards: () => get().definitionCards,
+
+  // Layout actions
+  setLayout: (updates) =>
+    set((state) => ({
+      layout: { ...state.layout, ...updates },
+    })),
+
+  resetLayout: () => set({ layout: { ...DEFAULT_LAYOUT } }),
 }));

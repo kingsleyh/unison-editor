@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 interface VerticalResizableSplitterProps {
   top: React.ReactNode;
@@ -6,6 +6,10 @@ interface VerticalResizableSplitterProps {
   minTopHeight?: number;
   minBottomHeight?: number;
   defaultTopPercent?: number; // Percentage of container height
+  /** Controlled topPercent (if provided, component is controlled) */
+  topPercent?: number;
+  /** Callback when topPercent changes (for persistence) */
+  onTopPercentChange?: (percent: number) => void;
   bottomCollapsed?: boolean;
   onBottomCollapse?: (collapsed: boolean) => void;
   collapsedHeight?: number; // Height of the collapsed bar
@@ -18,12 +22,29 @@ export function VerticalResizableSplitter({
   minTopHeight = 100,
   minBottomHeight = 100,
   defaultTopPercent = 50,
+  topPercent: controlledTopPercent,
+  onTopPercentChange,
   bottomCollapsed = false,
   onBottomCollapse,
   collapsedHeight = 32,
   collapsedLabel = 'Panel',
 }: VerticalResizableSplitterProps) {
-  const [topPercent, setTopPercent] = useState(defaultTopPercent);
+  // Internal state for uncontrolled mode
+  const [internalTopPercent, setInternalTopPercent] = useState(defaultTopPercent);
+
+  // Use controlled topPercent if provided, otherwise use internal state
+  const isControlled = controlledTopPercent !== undefined;
+  const topPercent = isControlled ? controlledTopPercent : internalTopPercent;
+
+  // Helper to update percent - calls callback for controlled, sets state for uncontrolled
+  const updateTopPercent = useCallback((newPercent: number) => {
+    if (isControlled) {
+      onTopPercentChange?.(newPercent);
+    } else {
+      setInternalTopPercent(newPercent);
+    }
+  }, [isControlled, onTopPercentChange]);
+
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   // Store the last non-collapsed percentage so we can restore it
@@ -63,7 +84,7 @@ export function VerticalResizableSplitter({
       // Constrain between min and max
       newPercent = Math.max(minTopPercent, Math.min(maxTopPercent, newPercent));
 
-      setTopPercent(newPercent);
+      updateTopPercent(newPercent);
       // Store this as the last good percentage
       lastTopPercentRef.current = newPercent;
     };
@@ -85,7 +106,7 @@ export function VerticalResizableSplitter({
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isDragging, minTopHeight, minBottomHeight, bottomCollapsed, onBottomCollapse, collapsedHeight]);
+  }, [isDragging, minTopHeight, minBottomHeight, bottomCollapsed, onBottomCollapse, collapsedHeight, updateTopPercent]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();

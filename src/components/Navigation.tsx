@@ -18,6 +18,18 @@ interface NavigationProps {
   revealInTree?: string | null;
   /** Callback to add content to scratch file */
   onAddToScratch?: (content: string) => void;
+  /** Controlled file explorer expanded state */
+  fileExplorerExpanded?: boolean;
+  /** Controlled UCM explorer expanded state */
+  ucmExplorerExpanded?: boolean;
+  /** Controlled split percent (file explorer %) */
+  sidebarSplitPercent?: number;
+  /** Callback when file explorer expanded changes */
+  onFileExplorerExpandedChange?: (expanded: boolean) => void;
+  /** Callback when UCM explorer expanded changes */
+  onUcmExplorerExpandedChange?: (expanded: boolean) => void;
+  /** Callback when split percent changes */
+  onSidebarSplitPercentChange?: (percent: number) => void;
 }
 
 /**
@@ -62,6 +74,12 @@ export function Navigation({
   onDefinitionClick,
   revealInTree,
   onAddToScratch,
+  fileExplorerExpanded,
+  ucmExplorerExpanded,
+  sidebarSplitPercent,
+  onFileExplorerExpandedChange,
+  onUcmExplorerExpandedChange,
+  onSidebarSplitPercentChange,
 }: NavigationProps) {
   const [showOnlyUnison, setShowOnlyUnison] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -377,7 +395,15 @@ export function Navigation({
 
   return (
     <div className="navigation">
-      <CollapsiblePanelStack panels={panels} />
+      <CollapsiblePanelStack
+        panels={panels}
+        fileExplorerExpanded={fileExplorerExpanded}
+        ucmExplorerExpanded={ucmExplorerExpanded}
+        splitPercent={sidebarSplitPercent}
+        onFileExplorerExpandedChange={onFileExplorerExpandedChange}
+        onUcmExplorerExpandedChange={onUcmExplorerExpandedChange}
+        onSplitPercentChange={onSidebarSplitPercentChange}
+      />
 
       <FileCreationModal
         isOpen={isCreateModalOpen}

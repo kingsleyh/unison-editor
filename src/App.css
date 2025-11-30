@@ -942,9 +942,27 @@ body {
   background-color: #0a5485;
 }
 
-.namespace-item.drop-target {
-  background-color: #2d4e2d;
-  outline: 1px dashed #4ec9b0;
+/* Valid drop target - GREEN (matches FileExplorer) */
+.namespace-item.drop-target-valid {
+  background-color: rgba(40, 167, 69, 0.2);
+  outline: 2px solid #28a745;
+  outline-offset: -2px;
+}
+
+/* Invalid drop target - RED (matches FileExplorer) */
+.namespace-item.drop-target-invalid {
+  background-color: rgba(220, 53, 69, 0.2);
+  outline: 2px solid #dc3545;
+  outline-offset: -2px;
+}
+
+/* Drop zone indicator - line between items (matches FileExplorer) */
+.namespace-drop-zone-indicator {
+  height: 2px;
+  background-color: #28a745;
+  margin: 2px 0;
+  border-radius: 1px;
+  box-shadow: 0 0 4px rgba(40, 167, 69, 0.5);
 }
 
 .namespace-item.dragging {

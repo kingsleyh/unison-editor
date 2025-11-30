@@ -15,103 +15,122 @@ interface BottomPanelSplitterProps {
   panels: BottomPanel[];
   collapsedWidth?: number;
   collapseThreshold?: number;
+  /** Controlled widths (if provided, component is controlled) */
+  widths?: number[];
+  /** Default widths for uncontrolled mode */
+  defaultWidths?: number[];
+  /** Callback when widths change (for persistence) */
+  onWidthsChange?: (widths: number[]) => void;
 }
 
 /**
  * A horizontal splitter for the bottom panel area.
  * Supports multiple panels that can be collapsed to vertical labels.
- * Similar to the top panel ResizableSplitter behavior.
+ *
+ * Key design: Uses absolute positioning from mouse position, NOT deltas.
+ * This ensures smooth dragging regardless of re-render timing.
  */
 export function BottomPanelSplitter({
   panels,
   collapsedWidth = 28,
   collapseThreshold = 50,
+  widths: controlledWidths,
+  defaultWidths,
+  onWidthsChange,
 }: BottomPanelSplitterProps) {
-  // Store widths as percentages of the container
-  const [widths, setWidths] = useState<number[]>(() =>
-    panels.map((p) => p.defaultWidth || 100 / panels.length)
+  // Internal state for uncontrolled mode - initialized once
+  const [internalWidths, setInternalWidths] = useState<number[]>(() =>
+    defaultWidths ?? panels.map((p) => p.defaultWidth || 100 / panels.length)
   );
+
+  // Use controlled widths if provided, otherwise use internal state
+  const isControlled = controlledWidths !== undefined;
+  const widths = isControlled ? controlledWidths : internalWidths;
+
+  // Dragging state: which divider index, and the starting mouse X
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastWidthsRef = useRef<number[]>(widths);
+
+  // Store starting positions when drag begins
+  const dragStartRef = useRef<{
+    mouseX: number;
+    leftPanelPercent: number;
+    rightPanelPercent: number;
+    containerWidth: number;
+  } | null>(null);
+
+  // Helper to update widths
+  const updateWidths = useCallback((newWidths: number[]) => {
+    if (isControlled) {
+      onWidthsChange?.(newWidths);
+    } else {
+      setInternalWidths(newWidths);
+      onWidthsChange?.(newWidths); // Still notify for persistence
+    }
+  }, [isControlled, onWidthsChange]);
 
   // Handle mouse drag for resizing
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (draggingIndex === null || !containerRef.current) return;
+      if (draggingIndex === null || !containerRef.current || !dragStartRef.current) return;
 
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const containerWidth = containerRect.width;
-      const mouseX = e.clientX - containerRect.left;
+      const { mouseX: startX, leftPanelPercent: startLeftPercent, rightPanelPercent: startRightPercent, containerWidth } = dragStartRef.current;
 
-      // Calculate new widths based on mouse position
-      const newWidths = [...widths];
+      // Calculate mouse delta from drag start
+      const deltaX = e.clientX - startX;
+      const deltaPercent = (deltaX / containerWidth) * 100;
 
-      // Calculate the position of the divider we're dragging
-      let dividerPosition = 0;
-      for (let i = 0; i < draggingIndex; i++) {
-        if (!panels[i].collapsed) {
-          dividerPosition += (widths[i] / 100) * containerWidth;
-        } else {
-          dividerPosition += collapsedWidth;
-        }
-        dividerPosition += 4; // Divider width
+      // Calculate new percentages (absolute from start, not incremental)
+      const newLeftPercent = startLeftPercent + deltaPercent;
+      const newRightPercent = startRightPercent - deltaPercent;
+
+      // Get panel info
+      const leftPanelIndex = draggingIndex;
+      const rightPanelIndex = draggingIndex + 1;
+      const leftPanel = panels[leftPanelIndex];
+      const rightPanel = panels[rightPanelIndex];
+
+      if (!leftPanel || !rightPanel || leftPanel.collapsed || rightPanel.collapsed) return;
+
+      // Get min widths as percentages
+      const leftMinPercent = ((leftPanel.minWidth || 100) / containerWidth) * 100;
+      const rightMinPercent = ((rightPanel.minWidth || 100) / containerWidth) * 100;
+
+      // Check for collapse thresholds (collapse if dragged past min - threshold)
+      const leftCollapsePercent = leftMinPercent - (collapseThreshold / containerWidth) * 100;
+      const rightCollapsePercent = rightMinPercent - (collapseThreshold / containerWidth) * 100;
+
+      if (newLeftPercent < leftCollapsePercent) {
+        // Collapse left panel
+        leftPanel.onCollapse(true);
+        return;
       }
 
-      // Calculate the new width for the panel to the left of the divider
-      const leftPanelIndex = draggingIndex;
-      const leftPanel = panels[leftPanelIndex];
+      if (newRightPercent < rightCollapsePercent) {
+        // Collapse right panel
+        rightPanel.onCollapse(true);
+        return;
+      }
 
-      if (!leftPanel.collapsed) {
-        // Calculate total width available for non-collapsed panels
-        let availableWidth = containerWidth;
-        let collapsedCount = 0;
-        panels.forEach((p, i) => {
-          if (p.collapsed) {
-            availableWidth -= collapsedWidth;
-            collapsedCount++;
-          }
-        });
-        availableWidth -= (panels.length - 1) * 4; // Dividers
+      // Constrain to min widths
+      const constrainedLeftPercent = Math.max(leftMinPercent, newLeftPercent);
+      const constrainedRightPercent = Math.max(rightMinPercent, newRightPercent);
 
-        // Calculate width based on mouse position
-        let leftWidth = mouseX;
-        for (let i = 0; i < leftPanelIndex; i++) {
-          if (!panels[i].collapsed) {
-            leftWidth -= (widths[i] / 100) * containerWidth;
-          } else {
-            leftWidth -= collapsedWidth;
-          }
-          leftWidth -= 4; // Divider
-        }
+      // If both can fit, update
+      const totalNeeded = constrainedLeftPercent + constrainedRightPercent;
+      const totalAvailable = startLeftPercent + startRightPercent;
 
-        const minWidth = leftPanel.minWidth || 100;
-        const leftWidthPercent = (leftWidth / containerWidth) * 100;
-
-        // Check for collapse
-        if (leftWidth < minWidth - collapseThreshold) {
-          leftPanel.onCollapse(true);
-          return;
-        }
-
-        // Constrain the width
-        const constrainedWidth = Math.max(minWidth, leftWidth);
-        const constrainedPercent = (constrainedWidth / containerWidth) * 100;
-
-        // Adjust the panel to the right to compensate
-        const rightPanelIndex = draggingIndex + 1;
-        if (rightPanelIndex < panels.length && !panels[rightPanelIndex].collapsed) {
-          const diff = constrainedPercent - widths[leftPanelIndex];
-          newWidths[leftPanelIndex] = constrainedPercent;
-          newWidths[rightPanelIndex] = Math.max(10, widths[rightPanelIndex] - diff);
-          setWidths(newWidths);
-          lastWidthsRef.current = newWidths;
-        }
+      if (totalNeeded <= totalAvailable) {
+        const newWidths = [...widths];
+        newWidths[leftPanelIndex] = constrainedLeftPercent;
+        newWidths[rightPanelIndex] = totalAvailable - constrainedLeftPercent;
+        updateWidths(newWidths);
       }
     };
 
     const handleMouseUp = () => {
       setDraggingIndex(null);
+      dragStartRef.current = null;
     };
 
     if (draggingIndex !== null) {
@@ -127,12 +146,29 @@ export function BottomPanelSplitter({
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [draggingIndex, widths, panels, collapsedWidth, collapseThreshold]);
+  }, [draggingIndex, panels, widths, collapsedWidth, collapseThreshold, updateWidths]);
 
   const handleDividerMouseDown = useCallback((index: number) => (e: React.MouseEvent) => {
     e.preventDefault();
+
+    if (!containerRef.current) return;
+
+    const leftPanel = panels[index];
+    const rightPanel = panels[index + 1];
+
+    // Only allow dragging between two expanded panels
+    if (!leftPanel || !rightPanel || leftPanel.collapsed || rightPanel.collapsed) return;
+
+    // Store the starting state for absolute positioning
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      leftPanelPercent: widths[index],
+      rightPanelPercent: widths[index + 1],
+      containerWidth: containerRef.current.getBoundingClientRect().width,
+    };
+
     setDraggingIndex(index);
-  }, []);
+  }, [panels, widths]);
 
   const handlePanelClick = useCallback((panel: BottomPanel) => {
     if (panel.collapsed) {

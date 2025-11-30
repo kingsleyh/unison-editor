@@ -92,6 +92,7 @@ export function NamespaceBrowser({
   const [dropTarget, setDropTarget] = useState<{
     path: string;
     position: 'inside' | 'before' | 'after';
+    isValid: boolean;
   } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -311,6 +312,7 @@ export function NamespaceBrowser({
     // Can only drop into namespaces
     if (node.type !== 'namespace') {
       e.dataTransfer.dropEffect = 'none';
+      setDropTarget({ path: node.fullPath, position: 'inside', isValid: false });
       return;
     }
 
@@ -323,11 +325,12 @@ export function NamespaceBrowser({
 
     if (isInvalidDrop) {
       e.dataTransfer.dropEffect = 'none';
+      setDropTarget({ path: node.fullPath, position: 'inside', isValid: false });
       return;
     }
 
     e.dataTransfer.dropEffect = 'move';
-    setDropTarget({ path: node.fullPath, position: 'inside' });
+    setDropTarget({ path: node.fullPath, position: 'inside', isValid: true });
   }, []);
 
   /**
@@ -756,14 +759,23 @@ export function NamespaceBrowser({
     const hasChildren = node.type === 'namespace';
     const isHighlighted = node.fullPath === highlightedPath;
     const isSelected = selectedNodes.has(node.fullPath);
-    const isDropTarget = dropTarget?.path === node.fullPath && dropTarget?.position === 'inside';
+    const isDropTargetNode = dropTarget?.path === node.fullPath && dropTarget?.position === 'inside';
+    const isDropTargetValid = isDropTargetNode && dropTarget?.isValid;
+    const isDropTargetInvalid = isDropTargetNode && !dropTarget?.isValid;
     const nodeKey = getNodeKey(node);
+
+    // Determine drop target class
+    const dropTargetClass = isDropTargetValid
+      ? 'drop-target-valid'
+      : isDropTargetInvalid
+        ? 'drop-target-invalid'
+        : '';
 
     return (
       <div key={nodeKey}>
         <div
           ref={isHighlighted ? highlightedRef : undefined}
-          className={`namespace-item ${isHighlighted ? 'highlighted' : ''} ${isSelected ? 'selected' : ''} ${isDropTarget ? 'drop-target' : ''} ${isDragging && isSelected ? 'dragging' : ''}`}
+          className={`namespace-item ${isHighlighted ? 'highlighted' : ''} ${isSelected ? 'selected' : ''} ${dropTargetClass} ${isDragging && isSelected ? 'dragging' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={(e) => handleNodeClick(e, node, nodePath)}
           onContextMenu={(e) => handleContextMenu(e, node)}

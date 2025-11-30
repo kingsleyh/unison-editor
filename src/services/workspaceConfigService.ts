@@ -27,23 +27,59 @@ export interface PersistedTab {
 }
 
 /**
- * Panel collapse states
+ * Complete layout state for all panels and splitters
  */
-export interface PanelStates {
-  navCollapsed: boolean;
-  termsCollapsed: boolean;
-  runPaneCollapsed: boolean;
+export interface LayoutState {
+  // Left sidebar
+  navPanelCollapsed: boolean;
+  navPanelWidth: number;           // pixels
+  fileExplorerExpanded: boolean;
+  ucmExplorerExpanded: boolean;
+  sidebarSplitPercent: number;     // 0-100
+
+  // Terms panel (middle)
+  termsPanelCollapsed: boolean;
+  termsPanelWidth: number;         // pixels
+
+  // Editor/Bottom vertical split
+  editorBottomSplitPercent: number; // 0-100
+
+  // Bottom panels
+  bottomPanelCollapsed: boolean;    // whole bottom area
+  ucmPanelCollapsed: boolean;
+  outputPanelCollapsed: boolean;
+  terminalPanelCollapsed: boolean;
+  bottomPanelWidths: number[];      // [ucm%, output%, terminal%]
 }
+
+/**
+ * Default layout values
+ */
+export const DEFAULT_LAYOUT: LayoutState = {
+  navPanelCollapsed: false,
+  navPanelWidth: 250,
+  fileExplorerExpanded: true,
+  ucmExplorerExpanded: true,
+  sidebarSplitPercent: 50,
+  termsPanelCollapsed: true,
+  termsPanelWidth: 400,
+  editorBottomSplitPercent: 65,
+  bottomPanelCollapsed: false,
+  ucmPanelCollapsed: false,
+  outputPanelCollapsed: false,
+  terminalPanelCollapsed: true,
+  bottomPanelWidths: [40, 35, 25],
+};
 
 /**
  * Editor state stored in .unison-editor/editor-state.json
  */
 export interface WorkspaceEditorState {
-  version: 1;
+  version: 2;
   tabs: PersistedTab[];
   activeTabId: string | null;
   autoRun: boolean;
-  panelStates: PanelStates;
+  layout: LayoutState;
 }
 
 /**
@@ -65,15 +101,11 @@ function getDefaultConfig(): WorkspaceConfig {
  */
 function getDefaultEditorState(): WorkspaceEditorState {
   return {
-    version: 1,
+    version: 2,
     tabs: [],
     activeTabId: null,
     autoRun: false,
-    panelStates: {
-      navCollapsed: false,
-      termsCollapsed: true,
-      runPaneCollapsed: false,
-    },
+    layout: { ...DEFAULT_LAYOUT },
   };
 }
 

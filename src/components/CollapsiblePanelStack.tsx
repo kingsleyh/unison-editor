@@ -13,113 +13,152 @@ export interface PanelConfig {
 interface CollapsiblePanelStackProps {
   panels: PanelConfig[];
   collapsedHeight?: number;
+  /** Controlled file explorer expanded state (if provided, component is controlled) */
+  fileExplorerExpanded?: boolean;
+  /** Controlled UCM explorer expanded state (if provided, component is controlled) */
+  ucmExplorerExpanded?: boolean;
+  /** Controlled split percent - file explorer % (if provided, component is controlled) */
+  splitPercent?: number;
+  /** Callback when file explorer expanded changes (for persistence) */
+  onFileExplorerExpandedChange?: (expanded: boolean) => void;
+  /** Callback when UCM explorer expanded changes (for persistence) */
+  onUcmExplorerExpandedChange?: (expanded: boolean) => void;
+  /** Callback when split percent changes (for persistence) */
+  onSplitPercentChange?: (percent: number) => void;
 }
 
-interface PanelState {
-  expanded: boolean;
-}
-
+/**
+ * Key design: Uses absolute positioning from mouse position, NOT incremental deltas.
+ * This ensures smooth dragging regardless of re-render timing.
+ */
 export function CollapsiblePanelStack({
   panels,
   collapsedHeight = 28,
+  fileExplorerExpanded: controlledFileExpanded,
+  ucmExplorerExpanded: controlledUcmExpanded,
+  splitPercent: controlledSplitPercent,
+  onFileExplorerExpandedChange,
+  onUcmExplorerExpandedChange,
+  onSplitPercentChange,
 }: CollapsiblePanelStackProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [panelStates, setPanelStates] = useState<Record<string, PanelState>>(() => {
-    const initial: Record<string, PanelState> = {};
-    panels.forEach((panel) => {
-      initial[panel.id] = {
-        expanded: panel.defaultExpanded ?? true,
-      };
-    });
-    return initial;
-  });
 
-  // File explorer height as percentage of available resizable space (0-100)
-  const [fileExplorerPercent, setFileExplorerPercent] = useState(50);
+  // Internal state for uncontrolled mode - initialized once
+  const [internalFileExpanded, setInternalFileExpanded] = useState(true);
+  const [internalUcmExpanded, setInternalUcmExpanded] = useState(true);
+  const [internalSplitPercent, setInternalSplitPercent] = useState(50);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
+
+  // Controlled vs uncontrolled for each value
+  const isFileExpandedControlled = controlledFileExpanded !== undefined;
+  const isUcmExpandedControlled = controlledUcmExpanded !== undefined;
+  const isSplitPercentControlled = controlledSplitPercent !== undefined;
+
+  // Current values (controlled or internal)
+  const fileExpanded = isFileExpandedControlled ? controlledFileExpanded : internalFileExpanded;
+  const ucmExpanded = isUcmExpandedControlled ? controlledUcmExpanded : internalUcmExpanded;
+  const splitPercent = isSplitPercentControlled ? controlledSplitPercent : internalSplitPercent;
+
   const [dragging, setDragging] = useState(false);
-  const [startY, setStartY] = useState(0);
-  const [startPercent, setStartPercent] = useState(0);
 
-  // Toggle panel expanded state
-  const togglePanel = useCallback((panelId: string) => {
-    setPanelStates((prev) => ({
-      ...prev,
-      [panelId]: {
-        ...prev[panelId],
-        expanded: !prev[panelId]?.expanded,
-      },
-    }));
-  }, []);
+  // Store starting positions when drag begins
+  const dragStartRef = useRef<{
+    mouseY: number;
+    startSplitPercent: number;
+    resizableTop: number;
+    resizableHeight: number;
+  } | null>(null);
+
+  // Memoized update helpers - call callback for controlled, set state for uncontrolled
+  const updateFileExpanded = useCallback((expanded: boolean) => {
+    if (isFileExpandedControlled) {
+      onFileExplorerExpandedChange?.(expanded);
+    } else {
+      setInternalFileExpanded(expanded);
+      onFileExplorerExpandedChange?.(expanded); // Still notify for persistence
+    }
+  }, [isFileExpandedControlled, onFileExplorerExpandedChange]);
+
+  const updateUcmExpanded = useCallback((expanded: boolean) => {
+    if (isUcmExpandedControlled) {
+      onUcmExplorerExpandedChange?.(expanded);
+    } else {
+      setInternalUcmExpanded(expanded);
+      onUcmExplorerExpandedChange?.(expanded); // Still notify for persistence
+    }
+  }, [isUcmExpandedControlled, onUcmExplorerExpandedChange]);
+
+  const updateSplitPercent = useCallback((percent: number) => {
+    if (isSplitPercentControlled) {
+      onSplitPercentChange?.(percent);
+    } else {
+      setInternalSplitPercent(percent);
+      onSplitPercentChange?.(percent); // Still notify for persistence
+    }
+  }, [isSplitPercentControlled, onSplitPercentChange]);
 
   // Handle drag start on divider
-  const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setDragging(true);
-      setStartY(e.clientY);
-      setStartPercent(fileExplorerPercent);
-    },
-    [fileExplorerPercent]
-  );
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+
+    if (!containerRef.current) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+
+    // Calculate the resizable area (excluding workspace panel)
+    const workspaceHeight = workspaceExpanded ? 150 : collapsedHeight; // Approximate
+    const resizableTop = containerRect.top + workspaceHeight + 4; // +4 for divider
+    const resizableHeight = containerRect.height - workspaceHeight - 4;
+
+    // Store starting state for absolute positioning
+    dragStartRef.current = {
+      mouseY: e.clientY,
+      startSplitPercent: splitPercent,
+      resizableTop,
+      resizableHeight,
+    };
+
+    setDragging(true);
+  }, [splitPercent, workspaceExpanded, collapsedHeight]);
 
   // Handle drag
   useEffect(() => {
-    if (!dragging) return;
+    if (!dragging || !dragStartRef.current) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
+      if (!dragStartRef.current) return;
 
-      const containerRect = containerRef.current.getBoundingClientRect();
+      const { mouseY: startY, startSplitPercent, resizableTop, resizableHeight } = dragStartRef.current;
 
-      // Calculate the resizable area (excluding workspace panel)
-      const workspacePanel = panels.find(p => p.id === 'workspace');
-      const workspaceState = workspacePanel ? panelStates[workspacePanel.id] : null;
-      const workspaceHeight = workspaceState?.expanded ? 150 : collapsedHeight; // Approximate
-
-      const resizableTop = containerRect.top + workspaceHeight + 4; // +4 for divider
-      const resizableHeight = containerRect.height - workspaceHeight - 4;
-
-      // Calculate new percentage based on mouse position
-      const mouseRelativeY = e.clientY - resizableTop;
-      let newPercent = (mouseRelativeY / resizableHeight) * 100;
+      // Calculate new percentage based on absolute mouse position relative to drag start
+      const deltaY = e.clientY - startY;
+      const deltaPercent = (deltaY / resizableHeight) * 100;
+      let newPercent = startSplitPercent + deltaPercent;
 
       // Clamp between 0 and 100
       newPercent = Math.max(0, Math.min(100, newPercent));
 
       // Collapse thresholds - if below 15%, collapse file explorer
       // If above 85%, collapse UCM explorer
-      const fileExplorerState = panelStates['file-explorer'];
-      const ucmExplorerState = panelStates['ucm-explorer'];
-
-      if (newPercent < 15 && fileExplorerState?.expanded) {
+      if (newPercent < 15 && fileExpanded) {
         // Collapse file explorer
-        setPanelStates(prev => ({
-          ...prev,
-          'file-explorer': { ...prev['file-explorer'], expanded: false }
-        }));
-        setFileExplorerPercent(0);
-      } else if (newPercent > 85 && ucmExplorerState?.expanded) {
+        updateFileExpanded(false);
+        updateSplitPercent(0);
+      } else if (newPercent > 85 && ucmExpanded) {
         // Collapse UCM explorer
-        setPanelStates(prev => ({
-          ...prev,
-          'ucm-explorer': { ...prev['ucm-explorer'], expanded: false }
-        }));
-        setFileExplorerPercent(100);
+        updateUcmExpanded(false);
+        updateSplitPercent(100);
       } else if (newPercent >= 15 && newPercent <= 85) {
         // Normal resize - ensure both are expanded
-        if (!fileExplorerState?.expanded || !ucmExplorerState?.expanded) {
-          setPanelStates(prev => ({
-            ...prev,
-            'file-explorer': { ...prev['file-explorer'], expanded: true },
-            'ucm-explorer': { ...prev['ucm-explorer'], expanded: true }
-          }));
-        }
-        setFileExplorerPercent(newPercent);
+        if (!fileExpanded) updateFileExpanded(true);
+        if (!ucmExpanded) updateUcmExpanded(true);
+        updateSplitPercent(newPercent);
       }
     };
 
     const handleMouseUp = () => {
       setDragging(false);
+      dragStartRef.current = null;
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -133,72 +172,51 @@ export function CollapsiblePanelStack({
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [dragging, startY, startPercent, panels, panelStates, collapsedHeight]);
+  }, [dragging, fileExpanded, ucmExpanded, updateFileExpanded, updateUcmExpanded, updateSplitPercent]);
 
   // Toggle resizable panels - clicking header expands or collapses
   const handlePanelHeaderClick = useCallback((panelId: string) => {
-    const state = panelStates[panelId];
-    const isExpanded = state?.expanded;
-
     if (panelId === 'file-explorer') {
-      if (isExpanded) {
+      if (fileExpanded) {
         // Collapse file explorer - UCM explorer takes all space
-        setPanelStates(prev => ({
-          ...prev,
-          'file-explorer': { expanded: false }
-        }));
-        setFileExplorerPercent(0);
+        updateFileExpanded(false);
+        updateSplitPercent(0);
       } else {
         // Expand file explorer
-        const ucmExpanded = panelStates['ucm-explorer']?.expanded;
         if (ucmExpanded) {
           // Both will be visible, set to 50/50
-          setFileExplorerPercent(50);
+          updateSplitPercent(50);
         } else {
           // UCM is collapsed, file explorer takes all space
-          setFileExplorerPercent(100);
+          updateSplitPercent(100);
         }
-        setPanelStates(prev => ({
-          ...prev,
-          'file-explorer': { expanded: true }
-        }));
+        updateFileExpanded(true);
       }
     } else if (panelId === 'ucm-explorer') {
-      if (isExpanded) {
+      if (ucmExpanded) {
         // Collapse UCM explorer - file explorer takes all space
-        setPanelStates(prev => ({
-          ...prev,
-          'ucm-explorer': { expanded: false }
-        }));
-        setFileExplorerPercent(100);
+        updateUcmExpanded(false);
+        updateSplitPercent(100);
       } else {
         // Expand UCM explorer
-        const fileExpanded = panelStates['file-explorer']?.expanded;
         if (fileExpanded) {
           // Both will be visible, set to 50/50
-          setFileExplorerPercent(50);
+          updateSplitPercent(50);
         } else {
           // File explorer is collapsed, UCM takes all space
-          setFileExplorerPercent(0);
+          updateSplitPercent(0);
         }
-        setPanelStates(prev => ({
-          ...prev,
-          'ucm-explorer': { expanded: true }
-        }));
+        updateUcmExpanded(true);
       }
-    } else {
-      // Workspace or other fixed panel - just toggle
-      togglePanel(panelId);
+    } else if (panelId === 'workspace') {
+      // Workspace panel - just toggle internal state
+      setWorkspaceExpanded(!workspaceExpanded);
     }
-  }, [panelStates, togglePanel]);
+  }, [fileExpanded, ucmExpanded, workspaceExpanded, updateFileExpanded, updateUcmExpanded, updateSplitPercent]);
 
   const workspacePanel = panels.find(p => p.id === 'workspace');
   const fileExplorerPanel = panels.find(p => p.id === 'file-explorer');
   const ucmExplorerPanel = panels.find(p => p.id === 'ucm-explorer');
-
-  const workspaceExpanded = workspacePanel ? panelStates[workspacePanel.id]?.expanded : false;
-  const fileExplorerExpanded = fileExplorerPanel ? panelStates[fileExplorerPanel.id]?.expanded : false;
-  const ucmExplorerExpanded = ucmExplorerPanel ? panelStates[ucmExplorerPanel.id]?.expanded : false;
 
   return (
     <div ref={containerRef} className="collapsible-panel-stack">
@@ -207,7 +225,7 @@ export function CollapsiblePanelStack({
         <div className={`collapsible-panel fixed-height ${workspaceExpanded ? 'expanded' : 'collapsed'}`}>
           <div
             className="collapsible-panel-header"
-            onClick={() => togglePanel(workspacePanel.id)}
+            onClick={() => handlePanelHeaderClick('workspace')}
           >
             <span className="collapsible-panel-chevron">{workspaceExpanded ? '▼' : '▶'}</span>
             <span className="collapsible-panel-title">{workspacePanel.title}</span>
@@ -225,22 +243,22 @@ export function CollapsiblePanelStack({
         {/* File Explorer Panel */}
         {fileExplorerPanel && (
           <div
-            className={`collapsible-panel resizable ${fileExplorerExpanded ? 'expanded' : 'collapsed'}`}
+            className={`collapsible-panel resizable ${fileExpanded ? 'expanded' : 'collapsed'}`}
             style={{
-              flex: fileExplorerExpanded
-                ? (ucmExplorerExpanded ? `0 0 ${fileExplorerPercent}%` : '1 1 auto')
+              flex: fileExpanded
+                ? (ucmExpanded ? `0 0 ${splitPercent}%` : '1 1 auto')
                 : '0 0 auto',
-              minHeight: fileExplorerExpanded ? (fileExplorerPanel.minHeight ?? 80) : collapsedHeight,
+              minHeight: fileExpanded ? (fileExplorerPanel.minHeight ?? 80) : collapsedHeight,
             }}
           >
             <div
               className="collapsible-panel-header"
-              onClick={() => handlePanelHeaderClick(fileExplorerPanel.id)}
+              onClick={() => handlePanelHeaderClick('file-explorer')}
             >
-              <span className="collapsible-panel-chevron">{fileExplorerExpanded ? '▼' : '▶'}</span>
+              <span className="collapsible-panel-chevron">{fileExpanded ? '▼' : '▶'}</span>
               <span className="collapsible-panel-title">{fileExplorerPanel.title}</span>
             </div>
-            {fileExplorerExpanded && (
+            {fileExpanded && (
               <div className="collapsible-panel-content">
                 {fileExplorerPanel.content}
               </div>
@@ -249,7 +267,7 @@ export function CollapsiblePanelStack({
         )}
 
         {/* Divider between File Explorer and UCM Explorer */}
-        {fileExplorerPanel && ucmExplorerPanel && fileExplorerExpanded && ucmExplorerExpanded && (
+        {fileExplorerPanel && ucmExplorerPanel && fileExpanded && ucmExpanded && (
           <div
             className={`collapsible-panel-divider ${dragging ? 'dragging' : ''}`}
             onMouseDown={handleDragStart}
@@ -259,22 +277,22 @@ export function CollapsiblePanelStack({
         {/* UCM Explorer Panel */}
         {ucmExplorerPanel && (
           <div
-            className={`collapsible-panel resizable ${ucmExplorerExpanded ? 'expanded' : 'collapsed'}`}
+            className={`collapsible-panel resizable ${ucmExpanded ? 'expanded' : 'collapsed'}`}
             style={{
-              flex: ucmExplorerExpanded
-                ? (fileExplorerExpanded ? `1 1 ${100 - fileExplorerPercent}%` : '1 1 auto')
+              flex: ucmExpanded
+                ? (fileExpanded ? `1 1 ${100 - splitPercent}%` : '1 1 auto')
                 : '0 0 auto',
-              minHeight: ucmExplorerExpanded ? (ucmExplorerPanel.minHeight ?? 80) : collapsedHeight,
+              minHeight: ucmExpanded ? (ucmExplorerPanel.minHeight ?? 80) : collapsedHeight,
             }}
           >
             <div
               className="collapsible-panel-header"
-              onClick={() => handlePanelHeaderClick(ucmExplorerPanel.id)}
+              onClick={() => handlePanelHeaderClick('ucm-explorer')}
             >
-              <span className="collapsible-panel-chevron">{ucmExplorerExpanded ? '▼' : '▶'}</span>
+              <span className="collapsible-panel-chevron">{ucmExpanded ? '▼' : '▶'}</span>
               <span className="collapsible-panel-title">{ucmExplorerPanel.title}</span>
             </div>
-            {ucmExplorerExpanded && (
+            {ucmExpanded && (
               <div className="collapsible-panel-content">
                 {ucmExplorerPanel.content}
               </div>

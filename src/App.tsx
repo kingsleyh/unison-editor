@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Editor, type DiagnosticCount } from './components/Editor';
 import { Navigation } from './components/Navigation';
 import { DefinitionStack } from './components/DefinitionStack';
@@ -16,9 +16,18 @@ import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
 import { applyThemeVariables, loadTheme } from './theme/unisonTheme';
 import { buildSingleWatchCode, buildSingleTestCode, buildAllWatchesCode, buildAllTestsCode, getTestName, detectTestExpressions, detectWatchExpressions } from './services/watchExpressionService';
-import { getWorkspaceConfigService } from './services/workspaceConfigService';
+import { getWorkspaceConfigService, type WorkspaceEditorState, type PersistedTab } from './services/workspaceConfigService';
 import { getUCMLifecycleService } from './services/ucmLifecycle';
 import './App.css';
+
+// Debounce helper
+function debounce<T extends (...args: Parameters<T>) => void>(fn: T, delay: number): T {
+  let timeoutId: number | null = null;
+  return ((...args: Parameters<T>) => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => fn(...args), delay);
+  }) as T;
+}
 
 function App() {
   const {
@@ -38,6 +47,10 @@ function App() {
     setWorkspaceConfigLoaded,
     setLinkedProject,
     addRecentWorkspace,
+    autoRun,
+    setAutoRun,
+    layout,
+    setLayout,
   } = useUnisonStore();
 
   // State for showing welcome screen vs main editor
@@ -51,14 +64,29 @@ function App() {
   } | null>(null);
   const [revealInTree, setRevealInTree] = useState<string | null>(null);
 
-  // Panel collapse states
-  const [navPanelCollapsed, setNavPanelCollapsed] = useState(false);
-  const [termsPanelCollapsed, setTermsPanelCollapsed] = useState(true);
+  // Panel collapse states from layout (stored in Zustand, persisted per-workspace)
+  const navPanelCollapsed = layout.navPanelCollapsed;
+  const termsPanelCollapsed = layout.termsPanelCollapsed;
+  const ucmPanelCollapsed = layout.ucmPanelCollapsed;
+  const outputPanelCollapsed = layout.outputPanelCollapsed;
+  const terminalPanelCollapsed = layout.terminalPanelCollapsed;
 
-  // Bottom panel collapse states
-  const [ucmPanelCollapsed, setUcmPanelCollapsed] = useState(false);
-  const [outputPanelCollapsed, setOutputPanelCollapsed] = useState(false);
-  const [terminalPanelCollapsed, setTerminalPanelCollapsed] = useState(true);
+  // Layout update helpers
+  const setNavPanelCollapsed = useCallback((collapsed: boolean) => {
+    setLayout({ navPanelCollapsed: collapsed });
+  }, [setLayout]);
+  const setTermsPanelCollapsed = useCallback((collapsed: boolean) => {
+    setLayout({ termsPanelCollapsed: collapsed });
+  }, [setLayout]);
+  const setUcmPanelCollapsed = useCallback((collapsed: boolean) => {
+    setLayout({ ucmPanelCollapsed: collapsed });
+  }, [setLayout]);
+  const setOutputPanelCollapsed = useCallback((collapsed: boolean) => {
+    setLayout({ outputPanelCollapsed: collapsed });
+  }, [setLayout]);
+  const setTerminalPanelCollapsed = useCallback((collapsed: boolean) => {
+    setLayout({ terminalPanelCollapsed: collapsed });
+  }, [setLayout]);
 
   // Diagnostic count from the editor (for status indicator)
   const [diagnosticCount, setDiagnosticCount] = useState<DiagnosticCount>({ errors: 0, warnings: 0 });
@@ -99,6 +127,54 @@ function App() {
           setLinkedProject(config.linkedProject);
         }
 
+        // Load editor state (tabs, layout)
+        const editorState = await configService.loadEditorState(workspaceDirectory);
+        if (editorState) {
+          // Restore layout
+          if (editorState.layout) {
+            setLayout(editorState.layout);
+          }
+          // Restore auto-run preference
+          if (editorState.autoRun !== undefined) {
+            setAutoRun(editorState.autoRun);
+          }
+          // Restore tabs - load file content for each tab with filePath
+          if (editorState.tabs && editorState.tabs.length > 0) {
+            const { getFileSystemService } = await import('./services/fileSystem');
+            const fileSystemService = getFileSystemService();
+
+            for (const persistedTab of editorState.tabs) {
+              try {
+                let content = persistedTab.content || '';
+                // If tab has a file path, load the content from disk (may have changed)
+                if (persistedTab.filePath) {
+                  try {
+                    content = await fileSystemService.readFile(persistedTab.filePath);
+                  } catch (e) {
+                    console.warn(`Failed to load file for tab ${persistedTab.title}:`, e);
+                    continue; // Skip tabs with missing files
+                  }
+                }
+                const tab: EditorTab = {
+                  id: persistedTab.id,
+                  title: persistedTab.title,
+                  content,
+                  language: persistedTab.language,
+                  isDirty: false,
+                  filePath: persistedTab.filePath,
+                };
+                addTab(tab);
+              } catch (e) {
+                console.error(`Failed to restore tab ${persistedTab.title}:`, e);
+              }
+            }
+            // Restore active tab
+            if (editorState.activeTabId) {
+              setActiveTab(editorState.activeTabId);
+            }
+          }
+        }
+
         // Add to recent workspaces
         addRecentWorkspace(workspaceDirectory);
 
@@ -114,7 +190,42 @@ function App() {
     }
 
     initWorkspace();
-  }, [workspaceDirectory, setWorkspaceConfigLoaded, setLinkedProject, addRecentWorkspace]);
+  }, [workspaceDirectory, setWorkspaceConfigLoaded, setLinkedProject, addRecentWorkspace, setLayout, setAutoRun, addTab, setActiveTab]);
+
+  // Debounced save of editor state when tabs or layout changes
+  const debouncedSaveEditorState = useMemo(
+    () =>
+      debounce(async () => {
+        if (!workspaceDirectory || !workspaceConfigLoaded) return;
+
+        const state = useUnisonStore.getState();
+        const configService = getWorkspaceConfigService();
+
+        const editorState: WorkspaceEditorState = {
+          version: 2,
+          tabs: state.tabs.map((t): PersistedTab => ({
+            id: t.id,
+            title: t.title,
+            filePath: t.filePath,
+            content: t.filePath ? undefined : t.content, // Only save content for scratch tabs
+            language: t.language,
+          })),
+          activeTabId: state.activeTabId,
+          autoRun: state.autoRun,
+          layout: state.layout,
+        };
+
+        await configService.saveEditorState(workspaceDirectory, editorState);
+      }, 500),
+    [workspaceDirectory, workspaceConfigLoaded]
+  );
+
+  // Save state when tabs, activeTabId, autoRun, or layout changes
+  useEffect(() => {
+    if (workspaceDirectory && workspaceConfigLoaded) {
+      debouncedSaveEditorState();
+    }
+  }, [tabs, activeTabId, autoRun, layout, workspaceDirectory, workspaceConfigLoaded, debouncedSaveEditorState]);
 
   // Check UCM API connection only when workspace config is loaded
   // This polls the UCM HTTP API to verify UCM is ready to accept commands
@@ -1031,6 +1142,8 @@ function App() {
             minLeftWidth={200}
             maxLeftWidth={400}
             defaultLeftWidth={250}
+            width={layout.navPanelWidth}
+            onWidthChange={(w) => setLayout({ navPanelWidth: w })}
             leftCollapsed={navPanelCollapsed}
             onLeftCollapse={setNavPanelCollapsed}
             collapsedLabel="Explorer"
@@ -1040,6 +1153,12 @@ function App() {
                 onDefinitionClick={handleOpenDefinition}
                 revealInTree={revealInTree}
                 onAddToScratch={handleAddToScratchFromNav}
+                fileExplorerExpanded={layout.fileExplorerExpanded}
+                ucmExplorerExpanded={layout.ucmExplorerExpanded}
+                sidebarSplitPercent={layout.sidebarSplitPercent}
+                onFileExplorerExpandedChange={(expanded) => setLayout({ fileExplorerExpanded: expanded })}
+                onUcmExplorerExpandedChange={(expanded) => setLayout({ ucmExplorerExpanded: expanded })}
+                onSidebarSplitPercentChange={(percent) => setLayout({ sidebarSplitPercent: percent })}
               />
             }
             right={
@@ -1047,6 +1166,8 @@ function App() {
                 minLeftWidth={300}
                 maxLeftWidth={800}
                 defaultLeftWidth={400}
+                width={layout.termsPanelWidth}
+                onWidthChange={(w) => setLayout({ termsPanelWidth: w })}
                 leftCollapsed={termsPanelCollapsed}
                 onLeftCollapse={setTermsPanelCollapsed}
                 collapsedLabel="Terms"
@@ -1073,8 +1194,10 @@ function App() {
                       minTopHeight={150}
                       minBottomHeight={120}
                       defaultTopPercent={65}
-                      bottomCollapsed={runPaneCollapsed}
-                      onBottomCollapse={setRunPaneCollapsed}
+                      topPercent={layout.editorBottomSplitPercent}
+                      onTopPercentChange={(p) => setLayout({ editorBottomSplitPercent: p })}
+                      bottomCollapsed={layout.bottomPanelCollapsed}
+                      onBottomCollapse={(collapsed) => setLayout({ bottomPanelCollapsed: collapsed })}
                       collapsedHeight={32}
                       collapsedLabel="Panel"
                       top={
@@ -1103,6 +1226,8 @@ function App() {
                       }
                       bottom={
                         <BottomPanelSplitter
+                          widths={layout.bottomPanelWidths}
+                          onWidthsChange={(widths) => setLayout({ bottomPanelWidths: widths })}
                           panels={[
                             {
                               id: 'ucm',

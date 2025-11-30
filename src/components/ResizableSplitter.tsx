@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 interface ResizableSplitterProps {
   left: React.ReactNode;
@@ -6,6 +6,10 @@ interface ResizableSplitterProps {
   minLeftWidth?: number;
   maxLeftWidth?: number;
   defaultLeftWidth?: number;
+  /** Controlled width (if provided, component is controlled) */
+  width?: number;
+  /** Callback when width changes (for persistence) */
+  onWidthChange?: (width: number) => void;
   /** Whether the left panel is collapsed */
   leftCollapsed?: boolean;
   /** Callback when collapse state changes */
@@ -24,13 +28,21 @@ export function ResizableSplitter({
   minLeftWidth = 200,
   maxLeftWidth = 600,
   defaultLeftWidth = 250,
+  width,
+  onWidthChange,
   leftCollapsed = false,
   onLeftCollapse,
   collapsedWidth = 28,
   collapseThreshold = 50,
   collapsedLabel,
 }: ResizableSplitterProps) {
-  const [leftWidth, setLeftWidth] = useState(defaultLeftWidth);
+  // Internal state for uncontrolled mode
+  const [internalWidth, setInternalWidth] = useState(defaultLeftWidth);
+
+  // Use controlled width if provided, otherwise use internal state
+  const isControlled = width !== undefined;
+  const leftWidth = isControlled ? width : internalWidth;
+
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   // Store the last non-collapsed width so we can restore it
@@ -38,6 +50,15 @@ export function ResizableSplitter({
 
   // Track if we're in the process of collapsing during this drag
   const collapsingRef = useRef(false);
+
+  // Helper to update width - calls callback for controlled, sets state for uncontrolled
+  const updateWidth = useCallback((newWidth: number) => {
+    if (isControlled) {
+      onWidthChange?.(newWidth);
+    } else {
+      setInternalWidth(newWidth);
+    }
+  }, [isControlled, onWidthChange]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -65,7 +86,7 @@ export function ResizableSplitter({
         onLeftCollapse(false);
         // Set to last known width or the new position, whichever is greater
         const restoredWidth = Math.max(lastWidthRef.current, minLeftWidth);
-        setLeftWidth(restoredWidth);
+        updateWidth(restoredWidth);
         return;
       }
 
@@ -75,7 +96,7 @@ export function ResizableSplitter({
           minLeftWidth,
           Math.min(maxLeftWidth, newWidth)
         );
-        setLeftWidth(constrainedWidth);
+        updateWidth(constrainedWidth);
         // Store this as the last good width
         lastWidthRef.current = constrainedWidth;
       }
@@ -99,7 +120,7 @@ export function ResizableSplitter({
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isDragging, minLeftWidth, maxLeftWidth, leftCollapsed, onLeftCollapse, collapsedWidth, collapseThreshold]);
+  }, [isDragging, minLeftWidth, maxLeftWidth, leftCollapsed, onLeftCollapse, collapsedWidth, collapseThreshold, updateWidth]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
