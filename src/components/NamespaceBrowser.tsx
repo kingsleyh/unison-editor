@@ -77,7 +77,8 @@ export function NamespaceBrowser({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<NamespaceItem[]>([]);
   const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [_selectedPath, setSelectedPath] = useState<string | null>(null);
+  void _selectedPath; // Used by setSelectedPath
   const highlightedRef = useRef<HTMLDivElement>(null);
 
   // Multi-select state
@@ -234,7 +235,7 @@ export function NamespaceBrowser({
 
     // Open - only for terms/types
     if (hasTermsOrTypes) {
-      const termsAndTypes = selection.filter(n => n.type === 'term' || n.type === 'type');
+      const termsAndTypes = selection.filter((n): n is TreeNode & { type: 'term' | 'type' } => n.type === 'term' || n.type === 'type');
       items.push({
         label: `Open${termsAndTypes.length > 1 ? ` (${termsAndTypes.length})` : ''}`,
         icon: '📄',
@@ -398,8 +399,9 @@ export function NamespaceBrowser({
 
   /**
    * Handle drop on root (move to top-level namespace)
+   * Note: Currently unused but kept for future drag-to-root functionality
    */
-  const handleDropOnRoot = useCallback(async (e: React.DragEvent) => {
+  const _handleDropOnRoot = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -426,6 +428,7 @@ export function NamespaceBrowser({
 
     draggedNodesRef.current = [];
   }, [refreshNamespace]);
+  void _handleDropOnRoot; // Reserved for future use
 
   // Load root namespace when project/branch changes or when refreshNamespace is triggered
   useEffect(() => {
@@ -499,7 +502,6 @@ export function NamespaceBrowser({
     // Deep clone to avoid mutating existing state
     let newNodes = cloneTreeNodes(rootNodes);
     let lastExpandedPath = '';
-    let stoppedAtIndex = -1;
 
     // Navigate and expand each namespace in the path
     // We try to expand as many as possible, stopping when we can't find a namespace
@@ -510,7 +512,6 @@ export function NamespaceBrowser({
       if (!node) {
         // Node not found - this might mean the remaining parts are the term name
         console.log(`[NamespaceBrowser] Could not find namespace "${partialPath}", stopping expansion at index ${i}`);
-        stoppedAtIndex = i;
         break;
       }
 
@@ -524,7 +525,6 @@ export function NamespaceBrowser({
               node.isLoaded = true;
             } catch (err) {
               console.error('Error expanding namespace:', err);
-              stoppedAtIndex = i;
               break;
             }
           }
@@ -534,13 +534,12 @@ export function NamespaceBrowser({
         // Found a non-namespace node (term/type) before reaching the end
         // The full FQN might be a compound term name starting from the previous namespace
         console.log(`[NamespaceBrowser] Found non-namespace at "${partialPath}", stopping at index ${i}`);
-        stoppedAtIndex = i;
         break;
       }
     }
 
     // Try to find the exact target node
-    let targetNode = findNodeByPath(newNodes, fqn);
+    let targetNode: TreeNode | null = findNodeByPath(newNodes, fqn);
 
     // If exact match not found, try to find the term in the tree
     // Unison has several patterns:
@@ -555,13 +554,13 @@ export function NamespaceBrowser({
         const termName = remainingParts.join('.');
 
         // Strategy 1: Look for exact compound term name (e.g., "Either.mapRight")
-        targetNode = parentNode.children.find((child) => child.name === termName);
+        targetNode = parentNode.children.find((child) => child.name === termName) ?? null;
 
         // Strategy 2: Look for a type/term with the first part of the name (e.g., "Either")
         // This handles cases where "Either.mapRight" means type "Either" in the tree
         if (!targetNode && remainingParts.length > 0) {
           const firstPart = remainingParts[0];
-          targetNode = parentNode.children.find((child) => child.name === firstPart);
+          targetNode = parentNode.children.find((child) => child.name === firstPart) ?? null;
         }
 
         // Strategy 3: Look for terms that start with the type name followed by a dot
@@ -573,10 +572,10 @@ export function NamespaceBrowser({
           );
           if (matchingChildren.length > 0) {
             // Try to find exact match among compound names
-            targetNode = matchingChildren.find((child) => child.name === termName);
+            targetNode = matchingChildren.find((child) => child.name === termName) ?? null;
             if (!targetNode) {
               // Fall back to the type itself if we found related terms
-              targetNode = parentNode.children.find((child) => child.name === remainingParts[0]);
+              targetNode = parentNode.children.find((child) => child.name === remainingParts[0]) ?? null;
             }
           }
         }

@@ -96,7 +96,6 @@ export function Navigation({
   // UCM Explorer modal state
   const [renameNode, setRenameNode] = useState<TreeNode | null>(null);
   const [deleteNodes, setDeleteNodes] = useState<TreeNode[]>([]);
-  const [namespaceRefreshTrigger, setNamespaceRefreshTrigger] = useState(0);
 
   const { workspaceDirectory, currentProject, currentBranch, refreshNamespace } = useUnisonStore();
   const fileSystemService = getFileSystemService();

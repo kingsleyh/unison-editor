@@ -23,7 +23,6 @@ export function RunPane({ isCollapsed }: RunPaneProps) {
                 // Determine block type based on content
                 const isTestBlock = block.startsWith('Tests:') || block.includes('✅') || block.includes('🚫');
                 const isErrorBlock = block.startsWith('⚠️');
-                const isWatchBlock = block.startsWith('>');
 
                 // Determine if this specific block has failures
                 const blockHasFailure = block.includes('🚫');

@@ -41,8 +41,6 @@ function App() {
     updateTab,
     getActiveTab,
     setConnected,
-    isConnected,
-    runPaneCollapsed,
     setRunPaneCollapsed,
     workspaceDirectory,
     workspaceConfigLoaded,
@@ -785,8 +783,10 @@ function App() {
       return;
     }
 
-    const watches = detectWatchExpressions(content);
-    const tests = detectTestExpressions(content);
+    // Detect expressions for potential future use (logging, UI hints, etc.)
+    const _watches = detectWatchExpressions(content);
+    const _tests = detectTestExpressions(content);
+    void _watches; void _tests; // Intentionally unused for now
 
     // Auto-expand output pane
     setRunPaneCollapsed(false);

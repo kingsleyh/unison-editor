@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type JSX } from 'react';
 import { getFileSystemService, type FileNode } from '../services/fileSystem';
 import { useUnisonStore } from '../store/unisonStore';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';

@@ -13,7 +13,7 @@ export interface SyntaxHelp {
  */
 export function getHelpForSegment(
   segmentText: string,
-  segmentType?: string
+  _segmentType?: string
 ): SyntaxHelp | null {
   const text = segmentText.trim();
 

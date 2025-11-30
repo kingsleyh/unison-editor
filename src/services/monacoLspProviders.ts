@@ -155,16 +155,19 @@ export function registerLspProviders(
         }
 
         return {
-          activeSignature: result.activeSignature || 0,
-          activeParameter: result.activeParameter || 0,
-          signatures: result.signatures.map((sig: any) => ({
-            label: sig.label,
-            documentation: sig.documentation,
-            parameters: sig.parameters?.map((p: any) => ({
-              label: p.label,
-              documentation: p.documentation,
-            })) || [],
-          })),
+          value: {
+            activeSignature: result.activeSignature || 0,
+            activeParameter: result.activeParameter || 0,
+            signatures: result.signatures.map((sig: any) => ({
+              label: sig.label,
+              documentation: sig.documentation,
+              parameters: sig.parameters?.map((p: any) => ({
+                label: p.label,
+                documentation: p.documentation,
+              })) || [],
+            })),
+          },
+          dispose: () => {},
         };
       } catch (error) {
         console.error('Signature help provider error:', error);

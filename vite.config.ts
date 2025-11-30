@@ -5,11 +5,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
 
-  // Optimize dependencies - include monaco-languageclient for proper bundling
+  // Optimize dependencies for proper bundling
   optimizeDeps: {
     include: [
       'monaco-editor',
-      'monaco-languageclient',
       'vscode-ws-jsonrpc',
     ],
   },
@@ -22,7 +21,7 @@ export default defineConfig({
       output: {
         // Manual chunks for better code splitting
         manualChunks: {
-          monaco: ['monaco-editor', 'monaco-languageclient'],
+          monaco: ['monaco-editor'],
           vendor: ['react', 'react-dom'],
         },
       },
@@ -31,6 +30,6 @@ export default defineConfig({
 
   // Resolve configuration
   resolve: {
-    dedupe: ['monaco-editor', 'vscode'],
+    dedupe: ['monaco-editor'],
   },
 })

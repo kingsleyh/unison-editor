@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUCMIntegrationService } from '../services/ucmIntegration';
 import { getLSPService } from '../services/lspService';
-import * as lsp from 'vscode-languageserver-protocol';
 
 interface WatchExpressionsPanelProps {
   fileContent: string;
@@ -18,7 +16,6 @@ interface WatchExpressionResult {
 export function WatchExpressionsPanel({ fileContent, filePath }: WatchExpressionsPanelProps) {
   const [watchExpressions, setWatchExpressions] = useState<WatchExpressionResult[]>([]);
   const [lspConnected, setLspConnected] = useState(false);
-  const ucmService = getUCMIntegrationService();
   const lspService = getLSPService();
 
   useEffect(() => {

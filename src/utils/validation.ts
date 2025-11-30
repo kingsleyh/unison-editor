@@ -330,7 +330,7 @@ export function parseArrayFiltered<T>(
 export function safeJsonParse<T>(
   json: string,
   schema: z.ZodSchema<T>,
-  context: string
+  _context: string
 ): { success: true; data: T } | { success: false; error: Error } {
   try {
     const parsed = JSON.parse(json);

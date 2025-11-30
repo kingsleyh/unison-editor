@@ -1,5 +1,3 @@
-import * as monaco from 'monaco-editor';
-
 /**
  * LSP Diagnostic (from server)
  */

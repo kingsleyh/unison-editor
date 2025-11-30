@@ -55,7 +55,7 @@ function lspSeverityToMonaco(severity?: number): Monaco.MarkerSeverity {
  */
 function diagnosticsToMarkers(
   diagnostics: LspDiagnostic[],
-  monaco: typeof Monaco
+  _monaco: typeof Monaco
 ): Monaco.editor.IMarkerData[] {
   return diagnostics.map((diag) => ({
     severity: lspSeverityToMonaco(diag.severity),

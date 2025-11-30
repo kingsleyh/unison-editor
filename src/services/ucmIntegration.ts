@@ -29,7 +29,7 @@ export class UCMIntegrationService {
    * Load a scratch file into UCM and get feedback
    * This simulates what happens when UCM watches a file
    */
-  async loadScratchFile(filePath: string): Promise<UCMFeedback> {
+  async loadScratchFile(_filePath: string): Promise<UCMFeedback> {
     // For now, return a placeholder
     // In a real implementation, we'd need UCM API support for loading scratch files
     // and getting typeck errors + watch results

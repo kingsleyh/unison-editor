@@ -57,7 +57,7 @@ export function DefinitionViewer({
   }
 
   function handleAddToScratch() {
-    if (definition) {
+    if (definition && definition.source) {
       onAddToScratch(definition.source, definition.name);
     }
   }

@@ -145,7 +145,7 @@ export function CollapsiblePanelStack({
     const handleMouseMove = (e: MouseEvent) => {
       if (!dragStartRef.current) return;
 
-      const { mouseY: startY, startSplitPercent, resizableTop, resizableHeight } = dragStartRef.current;
+      const { mouseY: startY, startSplitPercent, resizableHeight } = dragStartRef.current;
 
       // Calculate new percentage based on absolute mouse position relative to drag start
       const deltaY = e.clientY - startY;
