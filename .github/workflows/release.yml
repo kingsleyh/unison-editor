@@ -55,7 +55,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         run: npm ci
@@ -126,7 +126,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux dependencies
         run: |
