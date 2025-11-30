@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unison Editor - Modern IDE for Unison</title>
+  <meta name="description" content="A beautiful, feature-rich desktop IDE for the Unison programming language. Code completion, syntax highlighting, integrated terminal, and more.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <style>
+    .gradient-bg {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    }
+    .rainbow-text {
+      background: linear-gradient(90deg, #00ff87, #60efff, #0061ff, #ff00ea);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .card-hover:hover {
+      transform: translateY(-4px);
+      transition: transform 0.2s ease;
+    }
+  </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+  <!-- Hero Section -->
+  <header class="container mx-auto px-6 py-16 text-center">
+    <img src="assets/logo.png" alt="Unison Editor" class="w-24 h-24 mx-auto mb-6 rounded-2xl shadow-lg">
+    <h1 class="text-5xl font-bold mb-4">
+      <span class="rainbow-text">Unison Editor</span>
+    </h1>
+    <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+      A modern, beautiful desktop IDE for the Unison programming language.
+      Built with Tauri, React, and Monaco Editor.
+    </p>
+    <div class="flex justify-center gap-4 flex-wrap">
+      <a href="https://github.com/kingsleyh/unison-editor/releases/latest"
+         class="bg-green-500 hover:bg-green-600 px-8 py-3 rounded-lg font-semibold transition">
+        Download for macOS
+      </a>
+      <a href="https://github.com/kingsleyh/unison-editor/releases/latest"
+         class="bg-blue-500 hover:bg-blue-600 px-8 py-3 rounded-lg font-semibold transition">
+        Download for Linux
+      </a>
+      <a href="https://github.com/kingsleyh/unison-editor"
+         class="border border-gray-500 hover:border-white px-8 py-3 rounded-lg font-semibold transition">
+        View on GitHub
+      </a>
+    </div>
+  </header>
+
+  <!-- Screenshot -->
+  <section class="container mx-auto px-6 py-8">
+    <div class="rounded-xl overflow-hidden shadow-2xl border border-gray-700">
+      <img src="screenshots/editor-main.png" alt="Unison Editor Screenshot" class="w-full">
+    </div>
+  </section>
+
+  <!-- Features Grid -->
+  <section class="container mx-auto px-6 py-16">
+    <h2 class="text-3xl font-bold text-center mb-12">Features</h2>
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div class="bg-white/5 p-6 rounded-xl card-hover">
+        <div class="text-3xl mb-4">&#10024;</div>
+        <h3 class="text-xl font-semibold mb-2">Syntax Highlighting</h3>
+        <p class="text-gray-400">Full Unison syntax support with semantic highlighting for types, terms, and abilities.</p>
+      </div>
+      <div class="bg-white/5 p-6 rounded-xl card-hover">
+        <div class="text-3xl mb-4">&#128269;</div>
+        <h3 class="text-xl font-semibold mb-2">Code Navigation</h3>
+        <p class="text-gray-400">Browse namespaces, jump to definitions, and explore your codebase with ease.</p>
+      </div>
+      <div class="bg-white/5 p-6 rounded-xl card-hover">
+        <div class="text-3xl mb-4">&#9889;</div>
+        <h3 class="text-xl font-semibold mb-2">Auto-completion</h3>
+        <p class="text-gray-400">Intelligent completions powered by UCM with type signatures and documentation.</p>
+      </div>
+      <div class="bg-white/5 p-6 rounded-xl card-hover">
+        <div class="text-3xl mb-4">&#128421;</div>
+        <h3 class="text-xl font-semibold mb-2">Integrated Terminal</h3>
+        <p class="text-gray-400">Built-in UCM terminal and general-purpose shell access.</p>
+      </div>
+      <div class="bg-white/5 p-6 rounded-xl card-hover">
+        <div class="text-3xl mb-4">&#128065;</div>
+        <h3 class="text-xl font-semibold mb-2">Watch Expressions</h3>
+        <p class="text-gray-400">Live evaluation of expressions as you type with instant feedback.</p>
+      </div>
+      <div class="bg-white/5 p-6 rounded-xl card-hover">
+        <div class="text-3xl mb-4">&#128218;</div>
+        <h3 class="text-xl font-semibold mb-2">Documentation</h3>
+        <p class="text-gray-400">Rich documentation rendering with code blocks and formatted text.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Video Section -->
+  <section class="container mx-auto px-6 py-16">
+    <h2 class="text-3xl font-bold text-center mb-8">Getting Started</h2>
+    <div class="max-w-3xl mx-auto">
+      <div class="aspect-video bg-black/50 rounded-xl flex items-center justify-center border border-gray-700">
+        <!-- Replace VIDEO_ID with actual YouTube video ID -->
+        <div class="text-center text-gray-400 p-8">
+          <div class="text-5xl mb-4">&#127909;</div>
+          <p>Getting started video coming soon!</p>
+          <p class="text-sm mt-2">Check back for tutorials on using Unison Editor.</p>
+        </div>
+        <!-- Uncomment and replace VIDEO_ID when you have a video:
+        <iframe
+          class="w-full h-full rounded-xl"
+          src="https://www.youtube.com/embed/VIDEO_ID"
+          title="Getting Started with Unison Editor"
+          frameborder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen>
+        </iframe>
+        -->
+      </div>
+      <p class="text-center text-gray-400 mt-4">
+        Watch the quick start guide to get up and running in minutes.
+      </p>
+    </div>
+  </section>
+
+  <!-- Requirements -->
+  <section class="container mx-auto px-6 py-16">
+    <h2 class="text-3xl font-bold text-center mb-8">Requirements</h2>
+    <div class="max-w-2xl mx-auto bg-white/5 p-8 rounded-xl">
+      <ul class="space-y-4 text-gray-300">
+        <li class="flex items-start gap-3">
+          <span class="text-green-400">&#10003;</span>
+          <span><strong>UCM</strong> - Unison Codebase Manager must be installed and running</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <span class="text-green-400">&#10003;</span>
+          <span><strong>macOS 10.15+</strong> or <strong>Linux</strong> (Ubuntu 20.04+, Fedora 35+)</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <span class="text-green-400">&#10003;</span>
+          <span>UCM must be started with API enabled: <code class="bg-black/50 px-2 py-1 rounded">ucm --api</code></span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="container mx-auto px-6 py-8 text-center text-gray-500 border-t border-gray-800">
+    <p>
+      Made with &#10084; for the Unison community by
+      <a href="https://github.com/kingsleyh" class="text-blue-400 hover:underline">Kingsley Hendrickse</a>
+    </p>
+    <p class="mt-2">
+      <a href="https://github.com/kingsleyh/unison-editor" class="hover:text-white">GitHub</a>
+      &middot;
+      <a href="https://github.com/kingsleyh/unison-editor/issues" class="hover:text-white">Report Issue</a>
+      &middot;
+      <a href="https://www.unison-lang.org" class="hover:text-white">Unison Language</a>
+    </p>
+  </footer>
+</body>
+</html>
