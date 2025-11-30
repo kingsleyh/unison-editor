@@ -5,6 +5,7 @@ import { registerUnisonLanguage } from '../editor/unisonLanguage';
 import { getMonacoLspClient, type PublishDiagnosticsParams, type LspDiagnostic } from '../services/monacoLspClient';
 import { registerUCMProviders, setOnDefinitionClick, setMonacoEditor, triggerDefinitionClick } from '../services/monacoUcmProviders';
 import { ucmContext } from '../services/ucmContext';
+import { getUCMLifecycleService } from '../services/ucmLifecycle';
 import {
   detectWatchExpressions,
   isWatchExpressionLine,
@@ -127,28 +128,58 @@ export function Editor({
     };
   }, []);
 
-  // Initialize LSP connection (once per app)
+  // Track the last connected port to detect port changes
+  const lastConnectedPortRef = useRef<number | null>(null);
+
+  // Initialize LSP connection and reconnect when UCM status changes
   useEffect(() => {
-    async function initLSP() {
-      // Only connect if not already connected
-      if (lspClient.connected) {
-        return;
-      }
+    const ucmLifecycle = getUCMLifecycleService();
 
+    async function connectLSP() {
       try {
-        // Connect to LSP via WebSocket proxy (port 5758)
-        // LSP is used ONLY for diagnostics (type errors, parse errors)
-        await lspClient.connect(5758);
-        console.log('LSP connected (diagnostics only)');
+        const ports = ucmLifecycle.getPorts();
+        const wsPort = ports?.lspProxyPort ?? 5758;
+
+        // If we're already connected to this port, don't reconnect
+        if (lspClient.connected && lastConnectedPortRef.current === wsPort) {
+          return;
+        }
+
+        // If connected to a different port, disconnect first
+        if (lspClient.connected && lastConnectedPortRef.current !== wsPort) {
+          console.log(`[Editor] LSP port changed from ${lastConnectedPortRef.current} to ${wsPort}, reconnecting...`);
+          await lspClient.disconnect();
+          lspClient.resetReconnect(); // Allow reconnection after disconnect
+        }
+
+        // Connect to LSP via WebSocket proxy
+        await lspClient.connect(wsPort);
+        lastConnectedPortRef.current = wsPort;
+        console.log(`[Editor] LSP connected on port ${wsPort} (diagnostics only)`);
       } catch (error) {
-        console.error('Failed to connect to LSP:', error);
+        console.error('[Editor] Failed to connect to LSP:', error);
       }
     }
 
-    // Only initialize if not already connected
+    // Initial connection if not already connected
     if (!lspClient.connected) {
-      initLSP();
+      connectLSP();
     }
+
+    // Subscribe to UCM status changes to reconnect LSP when UCM comes back online
+    const unsubscribe = ucmLifecycle.onStatusChange((status) => {
+      if (status === 'running') {
+        console.log('[Editor] UCM status changed to running, reconnecting LSP...');
+        connectLSP();
+      } else if (status === 'error' || status === 'stopped') {
+        // Clear the port ref so we reconnect on next start
+        lastConnectedPortRef.current = null;
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [lspClient]);
 
   // Subscribe to LSP diagnostics

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Editor, type DiagnosticCount } from './components/Editor';
 import { Navigation } from './components/Navigation';
 import { DefinitionStack } from './components/DefinitionStack';
@@ -12,6 +13,7 @@ import { RunPane } from './components/RunPane';
 import { UCMTerminal } from './components/UCMTerminal';
 import { GeneralTerminal } from './components/GeneralTerminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { UCMConflictModal } from './components/UCMConflictModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
@@ -56,6 +58,9 @@ function App() {
   // State for showing welcome screen vs main editor
   const [showWelcome, setShowWelcome] = useState(!workspaceDirectory);
 
+  // State for UCM conflict modal (when another UCM is using the codebase)
+  const [showConflictModal, setShowConflictModal] = useState(false);
+
   const [selectedDefinition, setSelectedDefinition] = useState<{
     name: string;
     type: 'term' | 'type';
@@ -98,11 +103,46 @@ function App() {
   const windowRestoredRef = useRef(false);
   // Flag to prevent multiple workspace initializations
   const workspaceInitializedRef = useRef<string | null>(null);
+  // Promise that resolves when file lock error listener is ready
+  const fileLockListenerReadyRef = useRef<Promise<void> | null>(null);
+  const fileLockListenerResolveRef = useRef<(() => void) | null>(null);
 
   // Initialize theme system on mount
   useEffect(() => {
     const theme = loadTheme();
     applyThemeVariables(theme);
+  }, []);
+
+  // Listen for UCM file lock error (another UCM is using this codebase)
+  // This MUST be set up before any UCM spawn can happen
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+
+    // Create a promise that other code can await to know when listener is ready
+    fileLockListenerReadyRef.current = new Promise<void>((resolve) => {
+      fileLockListenerResolveRef.current = resolve;
+    });
+
+    // Set up the listener
+    (async () => {
+      unlisten = await listen('ucm-file-lock-error', () => {
+        console.log('[App] UCM file lock error received');
+        setShowConflictModal(true);
+      });
+      console.log('[App] File lock error listener registered');
+      // Signal that listener is ready
+      if (fileLockListenerResolveRef.current) {
+        fileLockListenerResolveRef.current();
+      }
+    })();
+
+    return () => {
+      fileLockListenerReadyRef.current = null;
+      fileLockListenerResolveRef.current = null;
+      if (unlisten) {
+        unlisten();
+      }
+    };
   }, []);
 
   // Track window size/position changes and save to layout
@@ -281,9 +321,18 @@ function App() {
         // Add to recent workspaces
         addRecentWorkspace(workspaceDirectory);
 
-        // Spawn UCM PTY for this workspace - this happens independently of terminal UI
-        // The UCMTerminal component will connect to this already-running process
-        await ucmLifecycle.spawn(workspaceDirectory);
+        // Spawn UCM PTY for this workspace if not already running
+        // (WelcomeScreen may have already spawned it)
+        if (!ucmLifecycle.isRunning()) {
+          // Wait for file lock error listener to be ready before spawning
+          // This ensures we can show the modal if UCM fails due to file lock
+          if (fileLockListenerReadyRef.current) {
+            console.log('[App] Waiting for file lock listener before UCM spawn...');
+            await fileLockListenerReadyRef.current;
+            console.log('[App] File lock listener ready, spawning UCM...');
+          }
+          await ucmLifecycle.spawn(workspaceDirectory);
+        }
 
         setWorkspaceConfigLoaded(true);
       } catch (error) {
@@ -1230,8 +1279,33 @@ function App() {
 
   // Handle workspace ready callback from WelcomeScreen
   const handleWorkspaceReady = useCallback(() => {
+    // Reset conflict modal in case WelcomeScreen handled a file lock error
+    // (both App and WelcomeScreen listen to the same event)
+    setShowConflictModal(false);
     setShowWelcome(false);
   }, []);
+
+  // Handle UCM conflict retry - try spawning UCM again
+  const handleConflictRetry = useCallback(async () => {
+    setShowConflictModal(false);
+    if (workspaceDirectory) {
+      const ucmLifecycle = getUCMLifecycleService();
+      try {
+        // Reset error state so spawn() will proceed
+        ucmLifecycle.resetError();
+        // Reset connection state so checkConnection will run again
+        setConnected(false);
+        await ucmLifecycle.spawn(workspaceDirectory);
+        // Re-check UCM API connection after successful retry
+        if (ucmLifecycle.isRunning()) {
+          checkConnection();
+        }
+      } catch (err) {
+        console.error('[App] Failed to retry UCM spawn:', err);
+        // The file lock error listener will show the modal again if needed
+      }
+    }
+  }, [workspaceDirectory, setConnected]);
 
   // Show welcome screen when no workspace is selected
   if (showWelcome) {
@@ -1402,6 +1476,11 @@ function App() {
           />
         )}
       </div>
+
+      <UCMConflictModal
+        isOpen={showConflictModal}
+        onRetry={handleConflictRetry}
+      />
     </div>
   );
 }

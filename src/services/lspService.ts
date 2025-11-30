@@ -542,9 +542,20 @@ export class LSPService {
 // Singleton instance
 let lspService: LSPService | null = null;
 
-export function getLSPService(): LSPService {
-  if (!lspService) {
-    lspService = new LSPService();
+export function getLSPService(host?: string, port?: number): LSPService {
+  // If specific host/port provided or service doesn't exist, create/recreate
+  if (!lspService || (host !== undefined && port !== undefined)) {
+    lspService = new LSPService(host || 'localhost', port || 5757);
   }
   return lspService;
+}
+
+/**
+ * Reset the LSP service singleton (useful when UCM restarts with new ports)
+ */
+export function resetLSPService(): void {
+  if (lspService) {
+    lspService.disconnect();
+    lspService = null;
+  }
 }

@@ -1,4 +1,6 @@
+use crate::lsp_proxy::LspProxy;
 use crate::mcp_client::{MCPClient, RunFunctionResult, RunTestsResult, TypecheckResult, UpdateResult};
+use crate::port_utils::find_available_port;
 use crate::ucm_api::{
     Branch, CurrentContext, Definition, DefinitionSummary, NamespaceItem, Project, SearchResult,
     UCMApiClient,
@@ -7,21 +9,31 @@ use crate::ucm_pty::{UCMContext, UCMPtyManager};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, State};
 
 pub struct AppState {
     pub ucm_client: Mutex<Option<UCMApiClient>>,
     pub mcp_client: Mutex<Option<MCPClient>>,
     pub ucm_pty: Mutex<Option<UCMPtyManager>>,
+    /// UCM HTTP API port (dynamically allocated, default 5858)
+    pub api_port: Mutex<u16>,
+    /// UCM LSP server port (dynamically allocated, default 5757)
+    pub lsp_port: Mutex<u16>,
+    /// WebSocket proxy port for LSP (dynamically allocated, default 5758)
+    pub lsp_proxy_port: Mutex<u16>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            ucm_client: Mutex::new(Some(UCMApiClient::new("127.0.0.1", 5858))),
+            // UCM client will be initialized when UCM is spawned with the actual port
+            ucm_client: Mutex::new(None),
             mcp_client: Mutex::new(None),
             ucm_pty: Mutex::new(None),
+            api_port: Mutex::new(5858),
+            lsp_port: Mutex::new(5757),
+            lsp_proxy_port: Mutex::new(5758),
         }
     }
 }
@@ -598,7 +610,6 @@ pub fn view_definitions(
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex as TokioMutex;
-use std::sync::Arc;
 
 pub struct LSPConnection {
     pub stream: Arc<TokioMutex<Option<TcpStream>>>,
@@ -719,24 +730,77 @@ async fn read_lsp_message(stream: &mut TcpStream) -> Result<String, anyhow::Erro
 ///
 /// # Arguments
 /// * `cwd` - Optional working directory for UCM (for file loading via `load` command)
+///
+/// # Returns
+/// The allocated service ports (API and LSP)
 #[tauri::command]
 pub fn ucm_pty_spawn(
     cwd: Option<String>,
     app_handle: AppHandle,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<ServicePorts, String> {
     let mut pty_guard = state.ucm_pty.lock().unwrap();
 
-    // Only spawn if not already running
-    if pty_guard.is_some() {
-        return Ok(());
+    // If already running, check if it's still actually running
+    // (UCM might have crashed due to file lock or other errors)
+    if let Some(ref manager) = *pty_guard {
+        if manager.is_running() {
+            let ports = ServicePorts {
+                api_port: *state.api_port.lock().unwrap(),
+                lsp_port: *state.lsp_port.lock().unwrap(),
+                lsp_proxy_port: *state.lsp_proxy_port.lock().unwrap(),
+            };
+            return Ok(ports);
+        } else {
+            // UCM exited - clear the old manager so we can try again
+            log::info!("Previous UCM PTY is no longer running, clearing state for respawn");
+            *pty_guard = None;
+        }
     }
 
-    let manager = UCMPtyManager::spawn(app_handle, cwd)?;
+    let (manager, ucm_ports) = UCMPtyManager::spawn(app_handle, cwd)?;
     *pty_guard = Some(manager);
 
-    log::info!("UCM PTY spawned successfully");
-    Ok(())
+    // Find available port for LSP WebSocket proxy (starting at 5758)
+    let lsp_proxy_port = find_available_port(5758)
+        .ok_or("Could not find available port for LSP WebSocket proxy")?;
+
+    // Store the allocated ports in AppState
+    *state.api_port.lock().unwrap() = ucm_ports.api_port;
+    *state.lsp_port.lock().unwrap() = ucm_ports.lsp_port;
+    *state.lsp_proxy_port.lock().unwrap() = lsp_proxy_port;
+
+    // Update the UCM API client to use the new port
+    let mut client_guard = state.ucm_client.lock().unwrap();
+    *client_guard = Some(UCMApiClient::new("127.0.0.1", ucm_ports.api_port));
+
+    // Start LSP WebSocket proxy now that we know the LSP port
+    let lsp_port = ucm_ports.lsp_port;
+    tauri::async_runtime::spawn(async move {
+        let proxy = Arc::new(LspProxy::new(lsp_proxy_port, "127.0.0.1".to_string(), lsp_port));
+        log::info!(
+            "LSP WebSocket proxy starting on port {} -> UCM LSP port {}",
+            lsp_proxy_port,
+            lsp_port
+        );
+        if let Err(e) = proxy.start().await {
+            log::error!("LSP proxy server error: {}", e);
+        }
+    });
+
+    log::info!(
+        "UCM PTY spawned successfully on ports - API: {}, LSP: {}, LSP Proxy: {}",
+        ucm_ports.api_port,
+        ucm_ports.lsp_port,
+        lsp_proxy_port
+    );
+
+    // Return all allocated ports
+    Ok(ServicePorts {
+        api_port: ucm_ports.api_port,
+        lsp_port: ucm_ports.lsp_port,
+        lsp_proxy_port,
+    })
 }
 
 /// Write data to UCM PTY (user input from terminal)
@@ -812,4 +876,25 @@ pub fn ucm_pty_kill(
     }
 
     Ok(())
+}
+
+/// Response struct for get_service_ports command
+#[derive(Serialize)]
+pub struct ServicePorts {
+    pub api_port: u16,
+    pub lsp_port: u16,
+    pub lsp_proxy_port: u16,
+}
+
+/// Get the current service ports (API, LSP, LSP proxy)
+/// These are dynamically allocated when UCM is spawned
+#[tauri::command]
+pub fn get_service_ports(
+    state: State<'_, AppState>,
+) -> ServicePorts {
+    ServicePorts {
+        api_port: *state.api_port.lock().unwrap(),
+        lsp_port: *state.lsp_port.lock().unwrap(),
+        lsp_proxy_port: *state.lsp_proxy_port.lock().unwrap(),
+    }
 }

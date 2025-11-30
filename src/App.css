@@ -744,6 +744,91 @@ body {
   color: #ffffff;
 }
 
+/* UCM Conflict Modal */
+.ucm-conflict-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.ucm-conflict-modal {
+  background-color: #252526;
+  border: 1px solid #3e3e42;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.ucm-conflict-icon {
+  margin-bottom: 16px;
+}
+
+.ucm-conflict-modal h2 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #cccccc;
+}
+
+.ucm-conflict-modal p {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #999999;
+  line-height: 1.5;
+}
+
+.ucm-conflict-hint {
+  font-size: 13px !important;
+  color: #808080 !important;
+  font-style: italic;
+}
+
+.ucm-conflict-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.ucm-conflict-btn {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.ucm-conflict-btn.primary {
+  background-color: #0e639c;
+  color: #ffffff;
+  border: none;
+}
+
+.ucm-conflict-btn.primary:hover {
+  background-color: #1177bb;
+}
+
+.ucm-conflict-btn.secondary {
+  background-color: transparent;
+  color: #cccccc;
+  border: 1px solid #3e3e42;
+}
+
+.ucm-conflict-btn.secondary:hover {
+  background-color: #2a2d2e;
+  border-color: #4e4e52;
+}
+
 .input-disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -3096,6 +3181,58 @@ body {
 
 .welcome-btn.primary:hover {
   background-color: #1177bb;
+}
+
+.welcome-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ucm-startup-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  color: #cccccc;
+}
+
+.ucm-startup-status p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.ucm-startup-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #3e3e42;
+  border-top-color: #0e639c;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ucm-startup-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 12px 16px;
+  background-color: rgba(215, 58, 73, 0.1);
+  border: 1px solid #d73a49;
+  border-radius: 4px;
+  color: #ff7b72;
+}
+
+.ucm-startup-error p {
+  margin: 0;
+  font-size: 14px;
 }
 
 .recent-workspaces {

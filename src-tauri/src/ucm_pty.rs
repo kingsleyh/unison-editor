@@ -5,7 +5,9 @@
 //! - Bidirectional communication (read/write)
 //! - Context detection by parsing UCM prompt
 //! - Event emission for output and context changes
+//! - Dynamic port allocation for API and LSP servers
 
+use crate::port_utils::find_available_port;
 use parking_lot::Mutex;
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
@@ -21,6 +23,13 @@ pub struct UCMContext {
     pub branch: Option<String>,
 }
 
+/// Ports allocated for UCM services
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UCMPorts {
+    pub api_port: u16,
+    pub lsp_port: u16,
+}
+
 /// UCM PTY Manager - manages a UCM process with PTY
 pub struct UCMPtyManager {
     /// Writer to send input to PTY
@@ -29,6 +38,8 @@ pub struct UCMPtyManager {
     current_context: Arc<Mutex<UCMContext>>,
     /// Flag to signal reader thread to stop
     running: Arc<Mutex<bool>>,
+    /// Allocated ports for this UCM instance
+    ports: UCMPorts,
 }
 
 impl UCMPtyManager {
@@ -37,7 +48,22 @@ impl UCMPtyManager {
     /// # Arguments
     /// * `app_handle` - Tauri app handle for emitting events
     /// * `cwd` - Optional working directory for UCM (for file loading)
-    pub fn spawn(app_handle: AppHandle, cwd: Option<String>) -> Result<Self, String> {
+    ///
+    /// # Returns
+    /// A tuple of (UCMPtyManager, UCMPorts) with the manager and allocated ports
+    pub fn spawn(app_handle: AppHandle, cwd: Option<String>) -> Result<(Self, UCMPorts), String> {
+        // Find available port for API server
+        // Note: UCM's LSP port is hardcoded at 5757 and cannot be configured
+        let api_port = find_available_port(5858)
+            .ok_or("Could not find available port for UCM API server")?;
+
+        // LSP port is hardcoded in UCM at 5757 - we cannot change it
+        let lsp_port: u16 = 5757;
+
+        log::info!("Allocating UCM ports - API: {}, LSP: {} (hardcoded)", api_port, lsp_port);
+
+        let ports = UCMPorts { api_port, lsp_port };
+
         // Create PTY system
         let pty_system = native_pty_system();
 
@@ -51,8 +77,13 @@ impl UCMPtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        // Build command for UCM with API server enabled
+        // Build command for UCM with explicit port configuration
         let mut cmd = CommandBuilder::new("ucm");
+
+        // Pass port argument to UCM for the codebase server (HTTP API)
+        // Note: UCM uses --port for the codebase server, LSP port is hardcoded at 5757
+        cmd.arg("--port");
+        cmd.arg(api_port.to_string());
 
         // Set working directory if provided, otherwise use home directory
         if let Some(dir) = cwd {
@@ -62,9 +93,6 @@ impl UCMPtyManager {
             log::info!("Setting UCM working directory to home: {:?}", home);
             cmd.cwd(home);
         }
-        // Note: UCM automatically starts the codebase server (HTTP API) on port 5858
-        // and the LSP server on port 5757 when run interactively.
-        // We don't need to pass explicit flags for default ports.
 
         // Spawn UCM in the PTY
         let _child = pair
@@ -121,6 +149,18 @@ impl UCMPtyManager {
                         if let Ok(text) = std::str::from_utf8(output) {
                             line_buffer.push_str(text);
 
+                            // Check for file lock error (UCM cannot start if another instance is using this codebase)
+                            if line_buffer.contains("Failed to obtain a file lock") {
+                                log::warn!("UCM file lock error detected - another UCM is using this codebase");
+                                // Mark as not running immediately so retry can work
+                                *running_clone.lock() = false;
+                                if let Err(e) = app_handle_clone.emit("ucm-file-lock-error", ()) {
+                                    log::error!("Failed to emit ucm-file-lock-error: {}", e);
+                                }
+                                // Break out of the loop - UCM is going to exit anyway
+                                break;
+                            }
+
                             // Check for prompt pattern and detect context changes
                             if let Some(new_context) = parse_ucm_prompt(&line_buffer) {
                                 let mut ctx = context_clone.lock();
@@ -153,11 +193,19 @@ impl UCMPtyManager {
             log::info!("UCM PTY reader thread exiting");
         });
 
-        Ok(Self {
+        let manager = Self {
             writer: Arc::new(Mutex::new(writer)),
             current_context,
             running,
-        })
+            ports: ports.clone(),
+        };
+
+        Ok((manager, ports))
+    }
+
+    /// Get the allocated ports for this UCM instance
+    pub fn get_ports(&self) -> UCMPorts {
+        self.ports.clone()
     }
 
     /// Write data to UCM's stdin
@@ -194,6 +242,12 @@ impl UCMPtyManager {
     /// Stop the PTY manager
     pub fn stop(&self) {
         *self.running.lock() = false;
+    }
+
+    /// Check if the PTY reader thread is still running
+    /// This returns false if UCM has exited (e.g., due to file lock error)
+    pub fn is_running(&self) -> bool {
+        *self.running.lock()
     }
 }
 

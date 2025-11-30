@@ -11,10 +11,17 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 export type UCMStatus = 'idle' | 'spawning' | 'running' | 'error' | 'stopped';
 
+export interface ServicePorts {
+  apiPort: number;
+  lspPort: number;
+  lspProxyPort: number;
+}
+
 export interface UCMLifecycleState {
   status: UCMStatus;
   error: string | null;
   workspaceDirectory: string | null;
+  ports: ServicePorts | null;
 }
 
 type StatusChangeCallback = (status: UCMStatus, error?: string) => void;
@@ -24,11 +31,32 @@ class UCMLifecycleService {
     status: 'idle',
     error: null,
     workspaceDirectory: null,
+    ports: null,
   };
 
   private listeners: Set<StatusChangeCallback> = new Set();
   private outputListeners: Set<(data: Uint8Array) => void> = new Set();
   private unlistenOutput: UnlistenFn | null = null;
+  private initialized: boolean = false;
+
+  /**
+   * Initialize listeners that need to be set up early
+   */
+  private async initialize(): Promise<void> {
+    if (this.initialized) return;
+    this.initialized = true;
+
+    // Set up file lock error listener early - this resets status so retry can work
+    // This event can be emitted very quickly after spawn, so we need to listen before spawn
+    // Note: We don't store the unlisten function because this listener lives for the
+    // lifetime of the singleton service
+    await listen('ucm-file-lock-error', () => {
+      console.log('[UCMLifecycle] UCM file lock error - resetting status to allow retry');
+      this.notifyStatusChange('error', 'Another UCM process is using this codebase');
+      this.state.ports = null;
+    });
+    console.log('[UCMLifecycle] File lock error listener registered');
+  }
 
   /**
    * Get current UCM status
@@ -49,6 +77,13 @@ class UCMLifecycleService {
    */
   isRunning(): boolean {
     return this.state.status === 'running';
+  }
+
+  /**
+   * Get the allocated service ports (only available after spawn completes)
+   */
+  getPorts(): ServicePorts | null {
+    return this.state.ports;
   }
 
   /**
@@ -82,6 +117,9 @@ class UCMLifecycleService {
    * This should be called once when workspace is configured.
    */
   async spawn(workspaceDirectory: string): Promise<boolean> {
+    // Initialize listeners first (only runs once)
+    await this.initialize();
+
     // Already running for this workspace
     if (this.state.status === 'running' && this.state.workspaceDirectory === workspaceDirectory) {
       console.log('[UCMLifecycle] UCM already running for workspace:', workspaceDirectory);
@@ -91,6 +129,12 @@ class UCMLifecycleService {
     // Already spawning
     if (this.state.status === 'spawning') {
       console.log('[UCMLifecycle] UCM spawn already in progress');
+      return false;
+    }
+
+    // In error state (e.g., file lock error) - don't auto-retry, wait for explicit retry
+    if (this.state.status === 'error' && this.state.workspaceDirectory === workspaceDirectory) {
+      console.log('[UCMLifecycle] UCM in error state for this workspace, not auto-retrying');
       return false;
     }
 
@@ -114,10 +158,11 @@ class UCMLifecycleService {
         });
       }
 
-      // Spawn UCM PTY
-      await invoke('ucm_pty_spawn', { cwd: workspaceDirectory });
+      // Spawn UCM PTY - returns the allocated ports
+      const ports = await invoke<ServicePorts>('ucm_pty_spawn', { cwd: workspaceDirectory });
+      this.state.ports = ports;
 
-      console.log('[UCMLifecycle] UCM PTY spawned successfully');
+      console.log('[UCMLifecycle] UCM PTY spawned successfully with ports:', ports);
       this.notifyStatusChange('running');
       return true;
     } catch (err) {
@@ -160,6 +205,19 @@ class UCMLifecycleService {
   }
 
   /**
+   * Reset error state to allow retry.
+   * Call this before spawn() when user explicitly clicks Retry.
+   */
+  resetError(): void {
+    if (this.state.status === 'error') {
+      console.log('[UCMLifecycle] Resetting error state for retry');
+      this.state.status = 'idle';
+      this.state.error = null;
+      // Keep workspaceDirectory so spawn knows what folder to use
+    }
+  }
+
+  /**
    * Stop the UCM PTY
    */
   async stop(): Promise<void> {
@@ -176,11 +234,15 @@ class UCMLifecycleService {
         this.unlistenOutput = null;
       }
 
+      // Note: Don't clean up file lock error listener - it's needed for retry functionality
+      // and is set up once during initialization
+
       // Kill the UCM PTY process on the backend
       await invoke('ucm_pty_kill');
 
       this.notifyStatusChange('stopped');
       this.state.workspaceDirectory = null;
+      this.state.ports = null;
       console.log('[UCMLifecycle] UCM PTY stopped');
     } catch (err) {
       console.error('[UCMLifecycle] Failed to stop UCM PTY:', err);

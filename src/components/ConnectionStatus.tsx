@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getMonacoLspClient } from '../services/monacoLspClient';
 import { ucmContext } from '../services/ucmContext';
+import { getUCMLifecycleService } from '../services/ucmLifecycle';
 
 type ConnectionState = 'connected' | 'connecting' | 'disconnected';
 
@@ -101,7 +102,12 @@ export function ConnectionStatus() {
   async function handleLspReconnect() {
     setLspState('connecting');
     try {
-      await lspClient.connect(5758);
+      // Get the dynamically allocated LSP proxy port from UCM lifecycle
+      const ucmLifecycle = getUCMLifecycleService();
+      const ports = ucmLifecycle.getPorts();
+      const wsPort = ports?.lspProxyPort ?? 5758; // Fallback to default if not available
+
+      await lspClient.connect(wsPort);
     } catch (error) {
       console.error('Failed to reconnect LSP:', error);
       setLspState('disconnected');

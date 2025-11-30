@@ -68,12 +68,40 @@ impl LspProxy {
 
         info!("WebSocket handshake completed");
 
-        // Connect to UCM LSP server
+        // Connect to UCM LSP server with retry logic
+        // UCM may take a few seconds to start its LSP server after spawning
         let lsp_addr = format!("{}:{}", self.lsp_host, self.lsp_port);
-        let lsp_stream = TcpStream::connect(&lsp_addr)
-            .await
-            .context(format!("Failed to connect to LSP server at {}", lsp_addr))?;
+        let mut lsp_stream = None;
+        let max_retries = 10;
+        let retry_delay = std::time::Duration::from_millis(500);
 
+        for attempt in 1..=max_retries {
+            match TcpStream::connect(&lsp_addr).await {
+                Ok(stream) => {
+                    lsp_stream = Some(stream);
+                    break;
+                }
+                Err(e) => {
+                    if attempt == max_retries {
+                        return Err(anyhow::anyhow!(
+                            "Failed to connect to LSP server at {} after {} attempts: {}",
+                            lsp_addr,
+                            max_retries,
+                            e
+                        ));
+                    }
+                    info!(
+                        "LSP connection attempt {}/{} failed, retrying in {}ms...",
+                        attempt,
+                        max_retries,
+                        retry_delay.as_millis()
+                    );
+                    tokio::time::sleep(retry_delay).await;
+                }
+            }
+        }
+
+        let lsp_stream = lsp_stream.unwrap();
         info!("Connected to UCM LSP server at {}", lsp_addr);
 
         // Split streams for bidirectional communication

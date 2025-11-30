@@ -84,34 +84,26 @@ export function WorkspaceSetupDialog({
 
         const ucmLifecycle = getUCMLifecycleService();
 
-        // Spawn UCM for this workspace if not already running
+        // UCM should already be running (spawned by WelcomeScreen)
         if (!ucmLifecycle.isRunning()) {
-          console.log('[WorkspaceSetupDialog] Spawning UCM for workspace:', folderPath);
-          await ucmLifecycle.spawn(folderPath);
-
-          // Wait for UCM to start up (it needs time to initialize)
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-
-        if (ucmLifecycle.isRunning()) {
-          // Send project.create command to UCM PTY
-          console.log('[WorkspaceSetupDialog] Creating UCM project:', linkedProjectName);
-          await ucmLifecycle.write(`project.create ${linkedProjectName}\n`);
-
-          // Give UCM a moment to process the command
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-
-          // Switch to the new project
-          await ucmLifecycle.write(`switch /${linkedProjectName}/main\n`);
-
-          // Wait for the switch to complete
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        } else {
-          console.warn('[WorkspaceSetupDialog] UCM failed to start, cannot create project');
-          setError('UCM failed to start. Please try again.');
+          console.warn('[WorkspaceSetupDialog] UCM not running, cannot create project');
+          setError('UCM is not running. Please close and reopen the workspace.');
           setLoading(false);
           return;
         }
+
+        // Send project.create command to UCM PTY
+        console.log('[WorkspaceSetupDialog] Creating UCM project:', linkedProjectName);
+        await ucmLifecycle.write(`project.create ${linkedProjectName}\n`);
+
+        // Give UCM a moment to process the command
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Switch to the new project
+        await ucmLifecycle.write(`switch /${linkedProjectName}/main\n`);
+
+        // Wait for the switch to complete
+        await new Promise((resolve) => setTimeout(resolve, 500));
       } else if (linkMode === 'existing' && selectedProject) {
         linkedProjectName = selectedProject;
       }
