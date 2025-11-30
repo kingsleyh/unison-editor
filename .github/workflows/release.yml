@@ -73,15 +73,61 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
           rm certificate.p12
 
-      - name: Build Tauri App (macOS)
+      - name: Build and Sign (without notarization)
         env:
-          # Code signing
           APPLE_SIGNING_IDENTITY: "Developer ID Application: Kingsley Hendrickse (CHA3FP8ENJ)"
-          # Notarization - all 3 required for notarization to work
+        run: npm run tauri build
+
+      - name: Notarize App
+        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run tauri build
+        run: |
+          APP_PATH=$(find src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
+          echo "Found app: $APP_PATH"
+
+          echo "Creating zip for notarization..."
+          ditto -c -k --keepParent "$APP_PATH" app-to-notarize.zip
+
+          echo "Submitting for notarization (30 min timeout)..."
+          xcrun notarytool submit app-to-notarize.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --timeout 30m \
+            --verbose
+
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+
+          rm app-to-notarize.zip
+
+      - name: Recreate DMG with Notarized App
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP_PATH=$(find src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
+          APP_NAME=$(basename "$APP_PATH" .app)
+          DMG_DIR="src-tauri/target/release/bundle/dmg"
+
+          rm -f "$DMG_DIR"/*.dmg
+          mkdir -p "$DMG_DIR"
+          hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_DIR/${APP_NAME}.dmg"
+
+          echo "Notarizing DMG..."
+          xcrun notarytool submit "$DMG_DIR/${APP_NAME}.dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait \
+            --timeout 30m
+
+          xcrun stapler staple "$DMG_DIR/${APP_NAME}.dmg"
 
       - name: Find DMG file
         id: find_dmg
