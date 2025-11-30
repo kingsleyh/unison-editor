@@ -145,16 +145,16 @@ export function ResizableSplitter({
         onClick={leftCollapsed ? handleDoubleClick : undefined}
         title={leftCollapsed ? 'Click to expand' : undefined}
       >
-        {leftCollapsed ? (
-          collapsedLabel && (
-            <div className="collapsed-label">
-              <span className="collapsed-label-icon">▶</span>
-              <span className="collapsed-label-text">{collapsedLabel}</span>
-            </div>
-          )
-        ) : (
-          left
+        {leftCollapsed && collapsedLabel && (
+          <div className="collapsed-label">
+            <span className="collapsed-label-icon">▶</span>
+            <span className="collapsed-label-text">{collapsedLabel}</span>
+          </div>
         )}
+        {/* Keep left content mounted but hidden when collapsed to preserve component state */}
+        <div style={{ display: leftCollapsed ? 'none' : 'contents' }}>
+          {left}
+        </div>
       </div>
       <div
         className={`resizable-divider ${isDragging ? 'dragging' : ''} ${leftCollapsed ? 'collapsed' : ''}`}
