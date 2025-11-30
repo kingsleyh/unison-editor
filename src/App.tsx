@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
 import { Editor, type DiagnosticCount } from './components/Editor';
 import { Navigation } from './components/Navigation';
 import { DefinitionStack } from './components/DefinitionStack';
@@ -16,7 +17,7 @@ import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
 import { applyThemeVariables, loadTheme } from './theme/unisonTheme';
 import { buildSingleWatchCode, buildSingleTestCode, buildAllWatchesCode, buildAllTestsCode, getTestName, detectTestExpressions, detectWatchExpressions } from './services/watchExpressionService';
-import { getWorkspaceConfigService, type WorkspaceEditorState, type PersistedTab } from './services/workspaceConfigService';
+import { getWorkspaceConfigService, type WorkspaceEditorState, type PersistedTab, type WindowState } from './services/workspaceConfigService';
 import { getUCMLifecycleService } from './services/ucmLifecycle';
 import './App.css';
 
@@ -94,6 +95,10 @@ function App() {
   const client = getUCMApiClient();
   const saveTimeoutRef = useRef<number | null>(null);
   const autoRunTimeoutRef = useRef<number | null>(null);
+  // Flag to prevent saving window state until restoration is complete
+  const windowRestoredRef = useRef(false);
+  // Flag to prevent multiple workspace initializations
+  const workspaceInitializedRef = useRef<string | null>(null);
 
   // Initialize theme system on mount
   useEffect(() => {
@@ -101,14 +106,80 @@ function App() {
     applyThemeVariables(theme);
   }, []);
 
+  // Track window size/position changes and save to layout
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    const unlistenPromises: Promise<() => void>[] = [];
+
+    // Debounced save function to avoid too many writes
+    let saveTimeout: number | null = null;
+    const saveWindowState = async () => {
+      // Skip saving until window restoration is complete
+      if (!windowRestoredRef.current) return;
+
+      if (saveTimeout) clearTimeout(saveTimeout);
+      saveTimeout = window.setTimeout(async () => {
+        try {
+          // Use outer size (window frame) for more accurate restoration
+          const size = await appWindow.outerSize();
+          const position = await appWindow.outerPosition();
+          const isMaximized = await appWindow.isMaximized();
+          const scaleFactor = await appWindow.scaleFactor();
+
+          // Convert to logical pixels for cross-session consistency
+          const windowState: WindowState = {
+            width: Math.round(size.width / scaleFactor),
+            height: Math.round(size.height / scaleFactor),
+            x: Math.round(position.x / scaleFactor),
+            y: Math.round(position.y / scaleFactor),
+            isMaximized,
+          };
+
+          setLayout({ windowState });
+        } catch (e) {
+          console.warn('Failed to save window state:', e);
+        }
+      }, 500);
+    };
+
+    // Listen for resize events
+    unlistenPromises.push(
+      appWindow.onResized(() => {
+        saveWindowState();
+      })
+    );
+
+    // Listen for move events
+    unlistenPromises.push(
+      appWindow.onMoved(() => {
+        saveWindowState();
+      })
+    );
+
+    return () => {
+      if (saveTimeout) clearTimeout(saveTimeout);
+      // Cleanup listeners
+      Promise.all(unlistenPromises).then((unlistenFns) => {
+        unlistenFns.forEach((unlisten) => unlisten());
+      });
+    };
+  }, [setLayout]);
+
   // Initialize workspace configuration when workspace directory changes
   useEffect(() => {
     async function initWorkspace() {
       if (!workspaceDirectory) {
         setWorkspaceConfigLoaded(false);
         setShowWelcome(true);
+        workspaceInitializedRef.current = null;
         return;
       }
+
+      // Prevent multiple initializations for the same workspace
+      if (workspaceInitializedRef.current === workspaceDirectory) {
+        return;
+      }
+      workspaceInitializedRef.current = workspaceDirectory;
 
       setShowWelcome(false);
 
@@ -133,6 +204,32 @@ function App() {
           // Restore layout
           if (editorState.layout) {
             setLayout(editorState.layout);
+
+            // Restore window size/position
+            if (editorState.layout.windowState) {
+              const windowState = editorState.layout.windowState;
+              const appWindow = getCurrentWindow();
+
+              try {
+                // First check if it was maximized
+                if (windowState.isMaximized) {
+                  await appWindow.maximize();
+                } else {
+                  // Use LogicalSize/Position for cross-platform consistency
+                  // Restore position first if available (before resize to avoid off-screen)
+                  if (windowState.x !== undefined && windowState.y !== undefined) {
+                    await appWindow.setPosition(new LogicalPosition(windowState.x, windowState.y));
+                  }
+                  // Restore size using logical pixels
+                  await appWindow.setSize(new LogicalSize(windowState.width, windowState.height));
+                }
+                // Small delay to ensure Tauri has finished applying the size
+                // before enabling window event tracking
+                await new Promise(resolve => setTimeout(resolve, 200));
+              } catch (e) {
+                console.warn('Failed to restore window state:', e);
+              }
+            }
           }
           // Restore auto-run preference
           if (editorState.autoRun !== undefined) {
@@ -140,6 +237,10 @@ function App() {
           }
           // Restore tabs - load file content for each tab with filePath
           if (editorState.tabs && editorState.tabs.length > 0) {
+            // Clear existing tabs before restoring to prevent duplicates
+            const { clearTabs } = useUnisonStore.getState();
+            clearTabs();
+
             const { getFileSystemService } = await import('./services/fileSystem');
             const fileSystemService = getFileSystemService();
 
@@ -175,6 +276,9 @@ function App() {
           }
         }
 
+        // Enable window state saving now that restoration is complete
+        windowRestoredRef.current = true;
+
         // Add to recent workspaces
         addRecentWorkspace(workspaceDirectory);
 
@@ -190,7 +294,8 @@ function App() {
     }
 
     initWorkspace();
-  }, [workspaceDirectory, setWorkspaceConfigLoaded, setLinkedProject, addRecentWorkspace, setLayout, setAutoRun, addTab, setActiveTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceDirectory]);
 
   // Debounced save of editor state when tabs or layout changes
   const debouncedSaveEditorState = useMemo(
@@ -220,7 +325,7 @@ function App() {
     [workspaceDirectory, workspaceConfigLoaded]
   );
 
-  // Save state when tabs, activeTabId, autoRun, or layout changes
+  // Save state when tabs, activeTabId, autoRun, layout, or definition cards change
   useEffect(() => {
     if (workspaceDirectory && workspaceConfigLoaded) {
       debouncedSaveEditorState();
@@ -1153,9 +1258,11 @@ function App() {
                 onDefinitionClick={handleOpenDefinition}
                 revealInTree={revealInTree}
                 onAddToScratch={handleAddToScratchFromNav}
+                workspaceExpanded={layout.workspaceExpanded}
                 fileExplorerExpanded={layout.fileExplorerExpanded}
                 ucmExplorerExpanded={layout.ucmExplorerExpanded}
                 sidebarSplitPercent={layout.sidebarSplitPercent}
+                onWorkspaceExpandedChange={(expanded) => setLayout({ workspaceExpanded: expanded })}
                 onFileExplorerExpandedChange={(expanded) => setLayout({ fileExplorerExpanded: expanded })}
                 onUcmExplorerExpandedChange={(expanded) => setLayout({ ucmExplorerExpanded: expanded })}
                 onSidebarSplitPercentChange={(percent) => setLayout({ sidebarSplitPercent: percent })}

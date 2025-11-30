@@ -13,12 +13,16 @@ export interface PanelConfig {
 interface CollapsiblePanelStackProps {
   panels: PanelConfig[];
   collapsedHeight?: number;
+  /** Controlled workspace expanded state (if provided, component is controlled) */
+  workspaceExpanded?: boolean;
   /** Controlled file explorer expanded state (if provided, component is controlled) */
   fileExplorerExpanded?: boolean;
   /** Controlled UCM explorer expanded state (if provided, component is controlled) */
   ucmExplorerExpanded?: boolean;
   /** Controlled split percent - file explorer % (if provided, component is controlled) */
   splitPercent?: number;
+  /** Callback when workspace expanded changes (for persistence) */
+  onWorkspaceExpandedChange?: (expanded: boolean) => void;
   /** Callback when file explorer expanded changes (for persistence) */
   onFileExplorerExpandedChange?: (expanded: boolean) => void;
   /** Callback when UCM explorer expanded changes (for persistence) */
@@ -34,9 +38,11 @@ interface CollapsiblePanelStackProps {
 export function CollapsiblePanelStack({
   panels,
   collapsedHeight = 28,
+  workspaceExpanded: controlledWorkspaceExpanded,
   fileExplorerExpanded: controlledFileExpanded,
   ucmExplorerExpanded: controlledUcmExpanded,
   splitPercent: controlledSplitPercent,
+  onWorkspaceExpandedChange,
   onFileExplorerExpandedChange,
   onUcmExplorerExpandedChange,
   onSplitPercentChange,
@@ -44,17 +50,19 @@ export function CollapsiblePanelStack({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Internal state for uncontrolled mode - initialized once
+  const [internalWorkspaceExpanded, setInternalWorkspaceExpanded] = useState(true);
   const [internalFileExpanded, setInternalFileExpanded] = useState(true);
   const [internalUcmExpanded, setInternalUcmExpanded] = useState(true);
   const [internalSplitPercent, setInternalSplitPercent] = useState(50);
-  const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
 
   // Controlled vs uncontrolled for each value
+  const isWorkspaceExpandedControlled = controlledWorkspaceExpanded !== undefined;
   const isFileExpandedControlled = controlledFileExpanded !== undefined;
   const isUcmExpandedControlled = controlledUcmExpanded !== undefined;
   const isSplitPercentControlled = controlledSplitPercent !== undefined;
 
   // Current values (controlled or internal)
+  const workspaceExpanded = isWorkspaceExpandedControlled ? controlledWorkspaceExpanded : internalWorkspaceExpanded;
   const fileExpanded = isFileExpandedControlled ? controlledFileExpanded : internalFileExpanded;
   const ucmExpanded = isUcmExpandedControlled ? controlledUcmExpanded : internalUcmExpanded;
   const splitPercent = isSplitPercentControlled ? controlledSplitPercent : internalSplitPercent;
@@ -70,6 +78,15 @@ export function CollapsiblePanelStack({
   } | null>(null);
 
   // Memoized update helpers - call callback for controlled, set state for uncontrolled
+  const updateWorkspaceExpanded = useCallback((expanded: boolean) => {
+    if (isWorkspaceExpandedControlled) {
+      onWorkspaceExpandedChange?.(expanded);
+    } else {
+      setInternalWorkspaceExpanded(expanded);
+      onWorkspaceExpandedChange?.(expanded); // Still notify for persistence
+    }
+  }, [isWorkspaceExpandedControlled, onWorkspaceExpandedChange]);
+
   const updateFileExpanded = useCallback((expanded: boolean) => {
     if (isFileExpandedControlled) {
       onFileExplorerExpandedChange?.(expanded);
@@ -209,10 +226,10 @@ export function CollapsiblePanelStack({
         updateUcmExpanded(true);
       }
     } else if (panelId === 'workspace') {
-      // Workspace panel - just toggle internal state
-      setWorkspaceExpanded(!workspaceExpanded);
+      // Workspace panel - toggle with persistence
+      updateWorkspaceExpanded(!workspaceExpanded);
     }
-  }, [fileExpanded, ucmExpanded, workspaceExpanded, updateFileExpanded, updateUcmExpanded, updateSplitPercent]);
+  }, [fileExpanded, ucmExpanded, workspaceExpanded, updateWorkspaceExpanded, updateFileExpanded, updateUcmExpanded, updateSplitPercent]);
 
   const workspacePanel = panels.find(p => p.id === 'workspace');
   const fileExplorerPanel = panels.find(p => p.id === 'file-explorer');
@@ -230,11 +247,12 @@ export function CollapsiblePanelStack({
             <span className="collapsible-panel-chevron">{workspaceExpanded ? '▼' : '▶'}</span>
             <span className="collapsible-panel-title">{workspacePanel.title}</span>
           </div>
-          {workspaceExpanded && (
-            <div className="collapsible-panel-content">
-              {workspacePanel.content}
-            </div>
-          )}
+          <div
+            className="collapsible-panel-content"
+            style={{ display: workspaceExpanded ? 'block' : 'none' }}
+          >
+            {workspacePanel.content}
+          </div>
         </div>
       )}
 

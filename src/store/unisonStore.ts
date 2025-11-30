@@ -114,6 +114,7 @@ interface UnisonState {
   setActiveTab: (tabId: string) => void;
   updateTab: (tabId: string, updates: Partial<EditorTab>) => void;
   getActiveTab: () => EditorTab | null;
+  clearTabs: () => void;
 
   // File system actions
   setWorkspaceDirectory: (directory: string | null) => void;
@@ -252,6 +253,8 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
     const state = get();
     return state.tabs.find((t) => t.id === state.activeTabId) || null;
   },
+
+  clearTabs: () => set({ tabs: [], activeTabId: null }),
 
   // File system actions
   setWorkspaceDirectory: (directory) => {

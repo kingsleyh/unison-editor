@@ -27,12 +27,24 @@ export interface PersistedTab {
 }
 
 /**
+ * Window size and position
+ */
+export interface WindowState {
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+  isMaximized?: boolean;
+}
+
+/**
  * Complete layout state for all panels and splitters
  */
 export interface LayoutState {
   // Left sidebar
   navPanelCollapsed: boolean;
   navPanelWidth: number;           // pixels
+  workspaceExpanded: boolean;      // Workspace panel in sidebar
   fileExplorerExpanded: boolean;
   ucmExplorerExpanded: boolean;
   sidebarSplitPercent: number;     // 0-100
@@ -50,6 +62,9 @@ export interface LayoutState {
   outputPanelCollapsed: boolean;
   terminalPanelCollapsed: boolean;
   bottomPanelWidths: number[];      // [ucm%, output%, terminal%]
+
+  // Window state
+  windowState?: WindowState;
 }
 
 /**
@@ -58,6 +73,7 @@ export interface LayoutState {
 export const DEFAULT_LAYOUT: LayoutState = {
   navPanelCollapsed: false,
   navPanelWidth: 250,
+  workspaceExpanded: true,
   fileExplorerExpanded: true,
   ucmExplorerExpanded: true,
   sidebarSplitPercent: 50,
@@ -72,6 +88,14 @@ export const DEFAULT_LAYOUT: LayoutState = {
 };
 
 /**
+ * Persisted definition card (minimal info needed to restore)
+ */
+export interface PersistedDefinitionCard {
+  id: string;
+  pendingIdentifier: string;
+}
+
+/**
  * Editor state stored in .unison-editor/editor-state.json
  */
 export interface WorkspaceEditorState {
@@ -80,6 +104,8 @@ export interface WorkspaceEditorState {
   activeTabId: string | null;
   autoRun: boolean;
   layout: LayoutState;
+  definitionCards?: PersistedDefinitionCard[];
+  selectedCardId?: string | null;
 }
 
 /**

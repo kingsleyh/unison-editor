@@ -18,12 +18,16 @@ interface NavigationProps {
   revealInTree?: string | null;
   /** Callback to add content to scratch file */
   onAddToScratch?: (content: string) => void;
+  /** Controlled workspace expanded state */
+  workspaceExpanded?: boolean;
   /** Controlled file explorer expanded state */
   fileExplorerExpanded?: boolean;
   /** Controlled UCM explorer expanded state */
   ucmExplorerExpanded?: boolean;
   /** Controlled split percent (file explorer %) */
   sidebarSplitPercent?: number;
+  /** Callback when workspace expanded changes */
+  onWorkspaceExpandedChange?: (expanded: boolean) => void;
   /** Callback when file explorer expanded changes */
   onFileExplorerExpandedChange?: (expanded: boolean) => void;
   /** Callback when UCM explorer expanded changes */
@@ -74,9 +78,11 @@ export function Navigation({
   onDefinitionClick,
   revealInTree,
   onAddToScratch,
+  workspaceExpanded,
   fileExplorerExpanded,
   ucmExplorerExpanded,
   sidebarSplitPercent,
+  onWorkspaceExpandedChange,
   onFileExplorerExpandedChange,
   onUcmExplorerExpandedChange,
   onSidebarSplitPercentChange,
@@ -397,9 +403,11 @@ export function Navigation({
     <div className="navigation">
       <CollapsiblePanelStack
         panels={panels}
+        workspaceExpanded={workspaceExpanded}
         fileExplorerExpanded={fileExplorerExpanded}
         ucmExplorerExpanded={ucmExplorerExpanded}
         splitPercent={sidebarSplitPercent}
+        onWorkspaceExpandedChange={onWorkspaceExpandedChange}
         onFileExplorerExpandedChange={onFileExplorerExpandedChange}
         onUcmExplorerExpandedChange={onUcmExplorerExpandedChange}
         onSplitPercentChange={onSidebarSplitPercentChange}
