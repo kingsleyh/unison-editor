@@ -604,7 +604,7 @@ fn parse_typecheck_output(raw_output: &str, is_error: bool) -> (String, Vec<Stri
     let mut errors: Vec<String> = Vec::new();
     let mut watch_results: Vec<WatchResult> = Vec::new();
     let mut test_results: Vec<TestResult> = Vec::new();
-    let mut messages: Vec<String> = Vec::new();
+    let messages: Vec<String> = Vec::new();
 
     // Try to parse as JSON
     if let Ok(json) = serde_json::from_str::<Value>(raw_output) {
@@ -847,6 +847,7 @@ fn parse_typecheck_output(raw_output: &str, is_error: bool) -> (String, Vec<Stri
 /// - "  4 | test> square.tests.ex1 = check (...)" followed by "✅ Passed Passed (cached)"
 /// - "🚫 FAILED square.tests.ex1" followed by error details
 /// The test name is in the "N | test> name = ..." line, not in the result line
+#[allow(dead_code)]
 fn parse_test_result(s: &str) -> Option<TestResult> {
     let trimmed = s.trim();
 
@@ -893,6 +894,7 @@ fn parse_test_result(s: &str) -> Option<TestResult> {
 
 /// Parse a single watch expression result from UCM output
 /// Format: "  1 | > 1 + 2\n        ⧩\n        3"
+#[allow(dead_code)]
 fn parse_watch_result(s: &str) -> Option<WatchResult> {
     let lines: Vec<&str> = s.lines().collect();
 

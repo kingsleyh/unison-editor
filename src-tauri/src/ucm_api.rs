@@ -240,18 +240,21 @@ pub struct DefinitionSummary {
 
 // Internal structs for deserializing from UCM API search response
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct SearchResultScore {
     result: SearchResultMatch,
     score: i32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct SearchResultMatch {
     segments: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "tag", content = "contents")]
+#[allow(dead_code)]
 enum SearchResultItem {
     FoundTermResult {
         #[serde(rename = "bestFoundTermName")]

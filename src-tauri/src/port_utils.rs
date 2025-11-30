@@ -10,6 +10,7 @@ pub fn find_available_port(starting_port: u16) -> Option<u16> {
 
 /// Find multiple distinct available ports.
 /// Returns None if not enough ports can be found.
+#[allow(dead_code)]
 pub fn find_available_ports(count: usize, starting_port: u16) -> Option<Vec<u16>> {
     let mut ports = Vec::with_capacity(count);
     let mut current = starting_port;

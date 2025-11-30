@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use futures::{SinkExt, StreamExt};
-use log::{error, info, warn};
+use log::{error, info};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};

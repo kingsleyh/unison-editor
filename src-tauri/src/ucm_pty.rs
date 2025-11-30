@@ -39,6 +39,7 @@ pub struct UCMPtyManager {
     /// Flag to signal reader thread to stop
     running: Arc<Mutex<bool>>,
     /// Allocated ports for this UCM instance
+    #[allow(dead_code)]
     ports: UCMPorts,
 }
 
@@ -204,6 +205,7 @@ impl UCMPtyManager {
     }
 
     /// Get the allocated ports for this UCM instance
+    #[allow(dead_code)]
     pub fn get_ports(&self) -> UCMPorts {
         self.ports.clone()
     }

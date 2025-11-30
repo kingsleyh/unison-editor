@@ -690,7 +690,6 @@ async fn read_lsp_message(stream: &mut TcpStream) -> Result<String, anyhow::Erro
     // Read headers
     let mut headers = Vec::new();
     let mut buffer = [0u8; 1];
-    let mut prev_char = '\0';
 
     loop {
         stream.read_exact(&mut buffer).await?;
@@ -704,8 +703,6 @@ async fn read_lsp_message(stream: &mut TcpStream) -> Result<String, anyhow::Erro
                 break;
             }
         }
-
-        prev_char = ch;
     }
 
     // Parse Content-Length

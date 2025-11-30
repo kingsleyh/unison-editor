@@ -6,6 +6,7 @@ import { WorkspaceSetupDialog } from './WorkspaceSetupDialog';
 import { UCMConflictModal } from './UCMConflictModal';
 import { getUCMLifecycleService } from '../services/ucmLifecycle';
 import { getUCMApiClient } from '../services/ucmApi';
+import appIcon from '../assets/app-icon.png';
 
 interface WelcomeScreenProps {
   onWorkspaceReady: () => void;
@@ -184,23 +185,7 @@ export function WelcomeScreen({ onWorkspaceReady }: WelcomeScreenProps) {
     <div className="welcome-screen">
       <div className="welcome-content">
         <div className="welcome-logo">
-          <svg
-            width="80"
-            height="80"
-            viewBox="0 0 100 100"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <circle cx="50" cy="50" r="45" stroke="#0e639c" strokeWidth="4" fill="none" />
-            <path
-              d="M30 35 L50 65 L70 35"
-              stroke="#0e639c"
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
+          <img src={appIcon} alt="Unison Editor" width="96" height="96" />
         </div>
 
         <h1 className="welcome-title">Welcome to Unison Editor</h1>
