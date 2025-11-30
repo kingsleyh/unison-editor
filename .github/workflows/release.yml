@@ -75,10 +75,8 @@ jobs:
 
       - name: Build Tauri App (macOS)
         env:
-          APPLE_SIGNING_IDENTITY: "Developer ID Application"
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # Sign with Developer ID but skip notarization for now
+          APPLE_SIGNING_IDENTITY: "Developer ID Application: Kingsley Hendrickse (CHA3FP8ENJ)"
         run: npm run tauri build
 
       - name: Find DMG file
