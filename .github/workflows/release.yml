@@ -75,8 +75,12 @@ jobs:
 
       - name: Build Tauri App (macOS)
         env:
-          # Sign with Developer ID but skip notarization for now
+          # Code signing
           APPLE_SIGNING_IDENTITY: "Developer ID Application: Kingsley Hendrickse (CHA3FP8ENJ)"
+          # Notarization - all 3 required for notarization to work
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npm run tauri build
 
       - name: Find DMG file
