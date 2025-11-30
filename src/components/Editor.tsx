@@ -407,7 +407,7 @@ export function Editor({
           // Disable automatic occurrence highlighting on click (too noisy)
           // User can still use Cmd+Shift+L to select all occurrences
           occurrencesHighlight: 'off',
-          // LSP features are automatically enabled via monaco-languageclient
+          // LSP features are enabled via custom LSP service (lspService.ts)
           quickSuggestions: {
             other: true,
             comments: false,

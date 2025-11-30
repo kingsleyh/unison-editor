@@ -12,6 +12,7 @@ import { RunPane } from './components/RunPane';
 import { UCMTerminal } from './components/UCMTerminal';
 import { GeneralTerminal } from './components/GeneralTerminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
@@ -1253,20 +1254,22 @@ function App() {
             onLeftCollapse={setNavPanelCollapsed}
             collapsedLabel="Explorer"
             left={
-              <Navigation
-                onFileClick={handleFileClick}
-                onDefinitionClick={handleOpenDefinition}
-                revealInTree={revealInTree}
-                onAddToScratch={handleAddToScratchFromNav}
-                workspaceExpanded={layout.workspaceExpanded}
-                fileExplorerExpanded={layout.fileExplorerExpanded}
-                ucmExplorerExpanded={layout.ucmExplorerExpanded}
-                sidebarSplitPercent={layout.sidebarSplitPercent}
-                onWorkspaceExpandedChange={(expanded) => setLayout({ workspaceExpanded: expanded })}
-                onFileExplorerExpandedChange={(expanded) => setLayout({ fileExplorerExpanded: expanded })}
-                onUcmExplorerExpandedChange={(expanded) => setLayout({ ucmExplorerExpanded: expanded })}
-                onSidebarSplitPercentChange={(percent) => setLayout({ sidebarSplitPercent: percent })}
-              />
+              <ErrorBoundary name="Navigation">
+                <Navigation
+                  onFileClick={handleFileClick}
+                  onDefinitionClick={handleOpenDefinition}
+                  revealInTree={revealInTree}
+                  onAddToScratch={handleAddToScratchFromNav}
+                  workspaceExpanded={layout.workspaceExpanded}
+                  fileExplorerExpanded={layout.fileExplorerExpanded}
+                  ucmExplorerExpanded={layout.ucmExplorerExpanded}
+                  sidebarSplitPercent={layout.sidebarSplitPercent}
+                  onWorkspaceExpandedChange={(expanded) => setLayout({ workspaceExpanded: expanded })}
+                  onFileExplorerExpandedChange={(expanded) => setLayout({ fileExplorerExpanded: expanded })}
+                  onUcmExplorerExpandedChange={(expanded) => setLayout({ ucmExplorerExpanded: expanded })}
+                  onSidebarSplitPercentChange={(percent) => setLayout({ sidebarSplitPercent: percent })}
+                />
+              </ErrorBoundary>
             }
             right={
               <ResizableSplitter
@@ -1279,11 +1282,13 @@ function App() {
                 onLeftCollapse={setTermsPanelCollapsed}
                 collapsedLabel="Terms"
                 left={
-                  <DefinitionStack
-                    selectedDefinition={selectedDefinition}
-                    onAddToScratch={handleAddToScratch}
-                    onRevealInTree={handleRevealInTree}
-                  />
+                  <ErrorBoundary name="Definition Stack">
+                    <DefinitionStack
+                      selectedDefinition={selectedDefinition}
+                      onAddToScratch={handleAddToScratch}
+                      onRevealInTree={handleRevealInTree}
+                    />
+                  </ErrorBoundary>
                 }
                 right={
                   <main className="main-content">
@@ -1309,26 +1314,28 @@ function App() {
                       collapsedLabel="Panel"
                       top={
                         <div className="editor-container">
-                          {activeTab ? (
-                            <Editor
-                              value={activeTab.content}
-                              onChange={handleEditorChange}
-                              language={activeTab.language}
-                              filePath={activeTab.filePath}
-                              onDefinitionClick={handleOpenDefinition}
-                              onRunWatchExpression={handleRunWatchExpression}
-                              onRunTestExpression={handleRunTestExpression}
-                              onRunFunction={handleRunFunction}
-                              onDiagnosticsChange={setDiagnosticCount}
-                            />
-                          ) : (
-                            <div className="no-editor">
-                              <p>No scratch file open</p>
-                              <button onClick={handleNewFile}>
-                                Create Scratch File
-                              </button>
-                            </div>
-                          )}
+                          <ErrorBoundary name="Editor">
+                            {activeTab ? (
+                              <Editor
+                                value={activeTab.content}
+                                onChange={handleEditorChange}
+                                language={activeTab.language}
+                                filePath={activeTab.filePath}
+                                onDefinitionClick={handleOpenDefinition}
+                                onRunWatchExpression={handleRunWatchExpression}
+                                onRunTestExpression={handleRunTestExpression}
+                                onRunFunction={handleRunFunction}
+                                onDiagnosticsChange={setDiagnosticCount}
+                              />
+                            ) : (
+                              <div className="no-editor">
+                                <p>No scratch file open</p>
+                                <button onClick={handleNewFile}>
+                                  Create Scratch File
+                                </button>
+                              </div>
+                            )}
+                          </ErrorBoundary>
                         </div>
                       }
                       bottom={
@@ -1339,7 +1346,11 @@ function App() {
                             {
                               id: 'ucm',
                               label: 'UCM',
-                              component: <UCMTerminal isCollapsed={ucmPanelCollapsed} />,
+                              component: (
+                                <ErrorBoundary name="UCM Terminal">
+                                  <UCMTerminal isCollapsed={ucmPanelCollapsed} />
+                                </ErrorBoundary>
+                              ),
                               collapsed: ucmPanelCollapsed,
                               onCollapse: setUcmPanelCollapsed,
                               minWidth: 200,
@@ -1349,7 +1360,9 @@ function App() {
                               id: 'output',
                               label: 'Output',
                               component: (
-                                <RunPane isCollapsed={outputPanelCollapsed} />
+                                <ErrorBoundary name="Output Pane">
+                                  <RunPane isCollapsed={outputPanelCollapsed} />
+                                </ErrorBoundary>
                               ),
                               collapsed: outputPanelCollapsed,
                               onCollapse: setOutputPanelCollapsed,
@@ -1368,7 +1381,11 @@ function App() {
                             {
                               id: 'terminal',
                               label: 'Terminal',
-                              component: <GeneralTerminal isCollapsed={terminalPanelCollapsed} />,
+                              component: (
+                                <ErrorBoundary name="Terminal">
+                                  <GeneralTerminal isCollapsed={terminalPanelCollapsed} />
+                                </ErrorBoundary>
+                              ),
                               collapsed: terminalPanelCollapsed,
                               onCollapse: setTerminalPanelCollapsed,
                               minWidth: 150,

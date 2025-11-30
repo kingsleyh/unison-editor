@@ -9,14 +9,17 @@ export interface FileNode {
 
 /**
  * File system service for interacting with local files via Tauri
+ * All operations support an optional workspace parameter for path validation
  */
 export class FileSystemService {
   /**
    * Read file contents
+   * @param path - Absolute path to the file
+   * @param workspace - Optional workspace root for path validation
    */
-  async readFile(path: string): Promise<string> {
+  async readFile(path: string, workspace?: string): Promise<string> {
     try {
-      return await invoke<string>('read_file', { path });
+      return await invoke<string>('read_file', { path, workspace });
     } catch (error) {
       throw new Error(`Failed to read file: ${error}`);
     }
@@ -24,10 +27,13 @@ export class FileSystemService {
 
   /**
    * Write content to file
+   * @param path - Absolute path to the file
+   * @param content - Content to write
+   * @param workspace - Optional workspace root for path validation
    */
-  async writeFile(path: string, content: string): Promise<void> {
+  async writeFile(path: string, content: string, workspace?: string): Promise<void> {
     try {
-      await invoke('write_file', { path, content });
+      await invoke('write_file', { path, content, workspace });
     } catch (error) {
       throw new Error(`Failed to write file: ${error}`);
     }
@@ -35,10 +41,13 @@ export class FileSystemService {
 
   /**
    * List directory contents
+   * @param path - Absolute path to the directory
+   * @param recursive - Whether to list recursively
+   * @param workspace - Optional workspace root for path validation
    */
-  async listDirectory(path: string, recursive: boolean = false): Promise<FileNode[]> {
+  async listDirectory(path: string, recursive: boolean = false, workspace?: string): Promise<FileNode[]> {
     try {
-      return await invoke<FileNode[]>('list_directory', { path, recursive });
+      return await invoke<FileNode[]>('list_directory', { path, recursive, workspace });
     } catch (error) {
       throw new Error(`Failed to list directory: ${error}`);
     }
@@ -46,10 +55,13 @@ export class FileSystemService {
 
   /**
    * Create a new file or directory
+   * @param path - Absolute path to create
+   * @param isDirectory - Whether to create a directory
+   * @param workspace - Optional workspace root for path validation
    */
-  async createFile(path: string, isDirectory: boolean): Promise<void> {
+  async createFile(path: string, isDirectory: boolean, workspace?: string): Promise<void> {
     try {
-      await invoke('create_file', { path, isDirectory });
+      await invoke('create_file', { path, isDirectory, workspace });
     } catch (error) {
       throw new Error(`Failed to create ${isDirectory ? 'directory' : 'file'}: ${error}`);
     }
@@ -57,10 +69,12 @@ export class FileSystemService {
 
   /**
    * Delete a file or directory
+   * @param path - Absolute path to delete
+   * @param workspace - Optional workspace root for path validation
    */
-  async deleteFile(path: string): Promise<void> {
+  async deleteFile(path: string, workspace?: string): Promise<void> {
     try {
-      await invoke('delete_file', { path });
+      await invoke('delete_file', { path, workspace });
     } catch (error) {
       throw new Error(`Failed to delete: ${error}`);
     }
@@ -68,10 +82,13 @@ export class FileSystemService {
 
   /**
    * Rename or move a file or directory
+   * @param oldPath - Current path
+   * @param newPath - New path
+   * @param workspace - Optional workspace root for path validation
    */
-  async renameFile(oldPath: string, newPath: string): Promise<void> {
+  async renameFile(oldPath: string, newPath: string, workspace?: string): Promise<void> {
     try {
-      await invoke('rename_file', { oldPath, newPath });
+      await invoke('rename_file', { oldPath, newPath, workspace });
     } catch (error) {
       throw new Error(`Failed to rename: ${error}`);
     }
@@ -79,10 +96,12 @@ export class FileSystemService {
 
   /**
    * Check if a file or directory exists
+   * @param path - Absolute path to check
+   * @param workspace - Optional workspace root for path validation
    */
-  async fileExists(path: string): Promise<boolean> {
+  async fileExists(path: string, workspace?: string): Promise<boolean> {
     try {
-      return await invoke<boolean>('file_exists', { path });
+      return await invoke<boolean>('file_exists', { path, workspace });
     } catch (error) {
       throw new Error(`Failed to check file existence: ${error}`);
     }

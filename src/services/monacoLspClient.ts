@@ -38,10 +38,27 @@ export class MonacoLspClient {
   private connectionCallbacks: ((connected: boolean) => void)[] = [];
   private diagnosticsCallbacks: ((params: PublishDiagnosticsParams) => void)[] = [];
 
+  // Reconnection state
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private baseReconnectDelay = 1000; // 1 second
+  private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private wsPort: number = 5758;
+
+  // Bound event handlers for proper cleanup
+  private boundOnOpen: (() => void) | null = null;
+  private boundOnError: ((event: Event) => void) | null = null;
+  private boundOnMessage: ((event: MessageEvent) => void) | null = null;
+  private boundOnClose: (() => void) | null = null;
+
   /**
    * Connect to the LSP server via WebSocket proxy
    */
   async connect(wsPort: number = 5758): Promise<void> {
+    // Clean up existing connection first
+    this.cleanup();
+    this.wsPort = wsPort;
+
     try {
       const wsUrl = `ws://127.0.0.1:${wsPort}`;
       console.log(`Connecting to LSP WebSocket proxy at ${wsUrl}...`);
@@ -54,28 +71,36 @@ export class MonacoLspClient {
           return;
         }
 
-        this.ws.addEventListener('open', () => {
+        // Create bound handlers that we can remove later
+        this.boundOnOpen = () => {
           console.log('WebSocket connection opened');
           this.isConnected = true;
+          this.reconnectAttempts = 0; // Reset on successful connection
           this.sendInitialize();
           resolve();
-        });
+        };
 
-        this.ws.addEventListener('error', (event) => {
+        this.boundOnError = (event: Event) => {
           console.error('WebSocket error:', event);
           this.isConnected = false;
           reject(new Error('WebSocket connection failed'));
-        });
+        };
 
-        this.ws.addEventListener('message', (event) => {
+        this.boundOnMessage = (event: MessageEvent) => {
           this.handleMessage(event.data);
-        });
+        };
 
-        this.ws.addEventListener('close', () => {
+        this.boundOnClose = () => {
           console.log('WebSocket connection closed');
           this.isConnected = false;
           this.notifyConnectionChange(false);
-        });
+          this.scheduleReconnect();
+        };
+
+        this.ws.addEventListener('open', this.boundOnOpen);
+        this.ws.addEventListener('error', this.boundOnError);
+        this.ws.addEventListener('message', this.boundOnMessage);
+        this.ws.addEventListener('close', this.boundOnClose);
       });
 
       this.notifyConnectionChange(true);
@@ -84,8 +109,75 @@ export class MonacoLspClient {
       console.error('Failed to connect to LSP:', error);
       this.isConnected = false;
       this.notifyConnectionChange(false);
+      this.scheduleReconnect();
       throw error;
     }
+  }
+
+  /**
+   * Schedule a reconnection attempt with exponential backoff
+   */
+  private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log('[LSP Client] Max reconnection attempts reached');
+      return;
+    }
+
+    // Cancel any existing reconnect timer
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+    }
+
+    // Calculate delay with exponential backoff (1s, 2s, 4s, 8s, 16s)
+    const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts);
+    this.reconnectAttempts++;
+
+    console.log(`[LSP Client] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+
+    this.reconnectTimeoutId = setTimeout(async () => {
+      try {
+        await this.connect(this.wsPort);
+      } catch {
+        // Error already logged in connect()
+      }
+    }, delay);
+  }
+
+  /**
+   * Clean up WebSocket event listeners and connection
+   */
+  private cleanup(): void {
+    // Cancel any pending reconnect
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+
+    // Remove event listeners
+    if (this.ws) {
+      if (this.boundOnOpen) this.ws.removeEventListener('open', this.boundOnOpen);
+      if (this.boundOnError) this.ws.removeEventListener('error', this.boundOnError);
+      if (this.boundOnMessage) this.ws.removeEventListener('message', this.boundOnMessage);
+      if (this.boundOnClose) this.ws.removeEventListener('close', this.boundOnClose);
+
+      // Close the connection
+      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+        this.ws.close();
+      }
+      this.ws = null;
+    }
+
+    // Clear bound handlers
+    this.boundOnOpen = null;
+    this.boundOnError = null;
+    this.boundOnMessage = null;
+    this.boundOnClose = null;
+
+    // Reject pending requests
+    this.pendingRequests.forEach(({ reject }) => {
+      reject(new Error('Connection closed'));
+    });
+    this.pendingRequests.clear();
   }
 
   /**
@@ -258,14 +350,20 @@ export class MonacoLspClient {
    * Disconnect from the LSP server
    */
   async disconnect(): Promise<void> {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    // Stop any auto-reconnect attempts
+    this.reconnectAttempts = this.maxReconnectAttempts;
 
+    this.cleanup();
     this.isConnected = false;
     this.notifyConnectionChange(false);
     console.log('LSP client disconnected');
+  }
+
+  /**
+   * Reset reconnection state to allow reconnecting
+   */
+  resetReconnect(): void {
+    this.reconnectAttempts = 0;
   }
 
   /**

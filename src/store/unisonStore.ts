@@ -3,6 +3,20 @@ import type { DefinitionSummary } from '../types/syntax';
 import type { ResolvedDefinition } from '../types/navigation';
 import { DEFAULT_LAYOUT, type LayoutState } from '../services/workspaceConfigService';
 
+/**
+ * Safely parse JSON from localStorage with fallback
+ */
+function safeLocalStorageGetJson<T>(key: string, fallback: T): T {
+  try {
+    const value = localStorage.getItem(key);
+    if (value === null) return fallback;
+    return JSON.parse(value) as T;
+  } catch (e) {
+    console.warn(`[Store] Failed to parse localStorage key "${key}":`, e);
+    return fallback;
+  }
+}
+
 export interface Project {
   name: string;
   active_branch?: string;
@@ -171,12 +185,12 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   activeTabId: null,
 
   workspaceDirectory: localStorage.getItem('workspaceDirectory') || null,
-  recentFiles: JSON.parse(localStorage.getItem('recentFiles') || '[]'),
+  recentFiles: safeLocalStorageGetJson<string[]>('recentFiles', []),
 
   // Workspace configuration state
   linkedProject: null, // Loaded from workspace config file
   workspaceConfigLoaded: false,
-  recentWorkspaces: JSON.parse(localStorage.getItem('recentWorkspaces') || '[]'),
+  recentWorkspaces: safeLocalStorageGetJson<string[]>('recentWorkspaces', []),
 
   namespaceVersion: 0,
   definitionsVersion: 0,

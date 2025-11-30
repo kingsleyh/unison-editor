@@ -216,6 +216,63 @@ pub async fn configure_ucm(
 
 // File System Commands
 
+/// Maximum recursion depth for directory listing to prevent infinite loops
+const MAX_DIRECTORY_DEPTH: usize = 50;
+
+/// Validate that a path is within the allowed workspace directory
+/// Returns the canonicalized path if valid, or an error if path traversal is detected
+fn validate_path(path: &str, workspace: Option<&str>) -> Result<PathBuf, String> {
+    let path_buf = PathBuf::from(path);
+
+    // Check for path traversal attempts in the raw path
+    if path.contains("..") {
+        return Err(format!("Path traversal not allowed: {}", path));
+    }
+
+    // If the path doesn't exist yet (e.g., for create operations), validate the parent
+    let canonical = if path_buf.exists() {
+        fs::canonicalize(&path_buf)
+            .map_err(|e| format!("Failed to resolve path '{}': {}", path, e))?
+    } else {
+        // For non-existent paths, canonicalize the parent and append the filename
+        if let Some(parent) = path_buf.parent() {
+            if parent.as_os_str().is_empty() || !parent.exists() {
+                // If parent doesn't exist or is empty, just return the original path
+                // This will be validated by the actual file operation
+                path_buf.clone()
+            } else {
+                let canonical_parent = fs::canonicalize(parent)
+                    .map_err(|e| format!("Failed to resolve parent path: {}", e))?;
+                if let Some(filename) = path_buf.file_name() {
+                    canonical_parent.join(filename)
+                } else {
+                    canonical_parent
+                }
+            }
+        } else {
+            path_buf.clone()
+        }
+    };
+
+    // If workspace is provided, ensure the path is within it
+    if let Some(ws) = workspace {
+        let ws_path = PathBuf::from(ws);
+        if ws_path.exists() {
+            let workspace_canonical = fs::canonicalize(&ws_path)
+                .map_err(|e| format!("Failed to resolve workspace '{}': {}", ws, e))?;
+
+            if !canonical.starts_with(&workspace_canonical) {
+                return Err(format!(
+                    "Path '{}' is outside the workspace directory",
+                    path
+                ));
+            }
+        }
+    }
+
+    Ok(canonical)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileNode {
     pub name: String,
@@ -226,39 +283,51 @@ pub struct FileNode {
 }
 
 #[tauri::command]
-pub async fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path)
+pub async fn read_file(path: String, workspace: Option<String>) -> Result<String, String> {
+    let validated_path = validate_path(&path, workspace.as_deref())?;
+    fs::read_to_string(&validated_path)
         .map_err(|e| format!("Failed to read file '{}': {}", path, e))
 }
 
 #[tauri::command]
-pub async fn write_file(path: String, content: String) -> Result<(), String> {
+pub async fn write_file(path: String, content: String, workspace: Option<String>) -> Result<(), String> {
+    let validated_path = validate_path(&path, workspace.as_deref())?;
+
     // Ensure parent directory exists
-    if let Some(parent) = Path::new(&path).parent() {
+    if let Some(parent) = validated_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create parent directory: {}", e))?;
     }
 
-    fs::write(&path, content)
+    fs::write(&validated_path, content)
         .map_err(|e| format!("Failed to write file '{}': {}", path, e))
 }
 
 #[tauri::command]
-pub async fn list_directory(path: String, recursive: bool) -> Result<Vec<FileNode>, String> {
-    let path_buf = PathBuf::from(&path);
+pub async fn list_directory(path: String, recursive: bool, workspace: Option<String>) -> Result<Vec<FileNode>, String> {
+    let validated_path = validate_path(&path, workspace.as_deref())?;
 
-    if !path_buf.exists() {
+    if !validated_path.exists() {
         return Err(format!("Path does not exist: {}", path));
     }
 
-    if !path_buf.is_dir() {
+    if !validated_path.is_dir() {
         return Err(format!("Path is not a directory: {}", path));
     }
 
-    list_directory_impl(&path_buf, recursive)
+    list_directory_impl(&validated_path, recursive, 0)
 }
 
-fn list_directory_impl(path: &Path, recursive: bool) -> Result<Vec<FileNode>, String> {
+fn list_directory_impl(path: &Path, recursive: bool, depth: usize) -> Result<Vec<FileNode>, String> {
+    // Prevent infinite recursion from symlinks or deeply nested directories
+    if depth > MAX_DIRECTORY_DEPTH {
+        return Err(format!(
+            "Maximum directory depth ({}) exceeded at '{}'",
+            MAX_DIRECTORY_DEPTH,
+            path.display()
+        ));
+    }
+
     let entries = fs::read_dir(path)
         .map_err(|e| format!("Failed to read directory '{}': {}", path.display(), e))?;
 
@@ -266,7 +335,7 @@ fn list_directory_impl(path: &Path, recursive: bool) -> Result<Vec<FileNode>, St
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
+        let entry_path = entry.path();
         let metadata = entry.metadata()
             .map_err(|e| format!("Failed to read metadata: {}", e))?;
 
@@ -280,10 +349,16 @@ fn list_directory_impl(path: &Path, recursive: bool) -> Result<Vec<FileNode>, St
         }
 
         let is_directory = metadata.is_dir();
-        let path_str = path.to_string_lossy().to_string();
+
+        // Skip symlinks to prevent infinite loops
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+
+        let path_str = entry_path.to_string_lossy().to_string();
 
         let children = if is_directory && recursive {
-            Some(list_directory_impl(&path, recursive)?)
+            Some(list_directory_impl(&entry_path, recursive, depth + 1)?)
         } else {
             None
         };
@@ -309,24 +384,24 @@ fn list_directory_impl(path: &Path, recursive: bool) -> Result<Vec<FileNode>, St
 }
 
 #[tauri::command]
-pub async fn create_file(path: String, is_directory: bool) -> Result<(), String> {
-    let path_buf = PathBuf::from(&path);
+pub async fn create_file(path: String, is_directory: bool, workspace: Option<String>) -> Result<(), String> {
+    let validated_path = validate_path(&path, workspace.as_deref())?;
 
-    if path_buf.exists() {
+    if validated_path.exists() {
         return Err(format!("Path already exists: {}", path));
     }
 
     if is_directory {
-        fs::create_dir_all(&path_buf)
+        fs::create_dir_all(&validated_path)
             .map_err(|e| format!("Failed to create directory '{}': {}", path, e))?;
     } else {
         // Ensure parent directory exists
-        if let Some(parent) = path_buf.parent() {
+        if let Some(parent) = validated_path.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create parent directory: {}", e))?;
         }
 
-        fs::write(&path_buf, "")
+        fs::write(&validated_path, "")
             .map_err(|e| format!("Failed to create file '{}': {}", path, e))?;
     }
 
@@ -334,18 +409,18 @@ pub async fn create_file(path: String, is_directory: bool) -> Result<(), String>
 }
 
 #[tauri::command]
-pub async fn delete_file(path: String) -> Result<(), String> {
-    let path_buf = PathBuf::from(&path);
+pub async fn delete_file(path: String, workspace: Option<String>) -> Result<(), String> {
+    let validated_path = validate_path(&path, workspace.as_deref())?;
 
-    if !path_buf.exists() {
+    if !validated_path.exists() {
         return Err(format!("Path does not exist: {}", path));
     }
 
-    if path_buf.is_dir() {
-        fs::remove_dir_all(&path_buf)
+    if validated_path.is_dir() {
+        fs::remove_dir_all(&validated_path)
             .map_err(|e| format!("Failed to delete directory '{}': {}", path, e))?;
     } else {
-        fs::remove_file(&path_buf)
+        fs::remove_file(&validated_path)
             .map_err(|e| format!("Failed to delete file '{}': {}", path, e))?;
     }
 
@@ -353,25 +428,28 @@ pub async fn delete_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
-    let old_path_buf = PathBuf::from(&old_path);
-    let new_path_buf = PathBuf::from(&new_path);
+pub async fn rename_file(old_path: String, new_path: String, workspace: Option<String>) -> Result<(), String> {
+    // Validate both paths are within the workspace
+    let validated_old = validate_path(&old_path, workspace.as_deref())?;
+    let validated_new = validate_path(&new_path, workspace.as_deref())?;
 
-    if !old_path_buf.exists() {
+    if !validated_old.exists() {
         return Err(format!("Source path does not exist: {}", old_path));
     }
 
-    if new_path_buf.exists() {
+    if validated_new.exists() {
         return Err(format!("Destination path already exists: {}", new_path));
     }
 
-    fs::rename(&old_path_buf, &new_path_buf)
+    fs::rename(&validated_old, &validated_new)
         .map_err(|e| format!("Failed to rename '{}' to '{}': {}", old_path, new_path, e))
 }
 
 #[tauri::command]
-pub async fn file_exists(path: String) -> Result<bool, String> {
-    Ok(PathBuf::from(&path).exists())
+pub async fn file_exists(path: String, workspace: Option<String>) -> Result<bool, String> {
+    // Validate path even for existence check to prevent information disclosure
+    let validated_path = validate_path(&path, workspace.as_deref())?;
+    Ok(validated_path.exists())
 }
 
 // UCM MCP Commands - For updating codebase definitions

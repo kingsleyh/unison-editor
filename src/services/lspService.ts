@@ -22,7 +22,8 @@ export class LSPService {
   private isConnected = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
-  private reconnectDelay = 2000; // 2 seconds
+  private baseReconnectDelay = 1000; // 1 second base delay
+  private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   // Background polling for server notifications
   private pollingInterval: number | null = null;
@@ -36,6 +37,12 @@ export class LSPService {
    * Connect to UCM's LSP server via Tauri TCP bridge
    */
   async connect(): Promise<void> {
+    // Cancel any pending reconnect
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+      this.reconnectTimeoutId = null;
+    }
+
     try {
       await invoke('lsp_connect', { host: this.host, port: this.port });
       console.log('Connected to UCM LSP server');
@@ -55,15 +62,40 @@ export class LSPService {
       this.isConnected = false;
       this.notifyConnectionChange(false);
 
-      // Attempt to reconnect
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++;
-        console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-        setTimeout(() => this.connect(), this.reconnectDelay);
-      }
+      // Attempt to reconnect with exponential backoff
+      this.scheduleReconnect();
 
       throw error;
     }
+  }
+
+  /**
+   * Schedule a reconnection attempt with exponential backoff
+   */
+  private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log('[LSP Service] Max reconnection attempts reached');
+      return;
+    }
+
+    // Cancel any existing reconnect timer
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+    }
+
+    // Calculate delay with exponential backoff (1s, 2s, 4s, 8s, 16s)
+    const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts);
+    this.reconnectAttempts++;
+
+    console.log(`[LSP Service] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+
+    this.reconnectTimeoutId = setTimeout(async () => {
+      try {
+        await this.connect();
+      } catch {
+        // Error already logged in connect()
+      }
+    }, delay);
   }
 
   /**
@@ -71,6 +103,13 @@ export class LSPService {
    */
   async disconnect(): Promise<void> {
     try {
+      // Stop any reconnection attempts
+      if (this.reconnectTimeoutId) {
+        clearTimeout(this.reconnectTimeoutId);
+        this.reconnectTimeoutId = null;
+      }
+      this.reconnectAttempts = this.maxReconnectAttempts; // Prevent auto-reconnect
+
       await invoke('lsp_disconnect');
       this.isConnected = false;
       this.pendingRequests.clear();
@@ -82,6 +121,13 @@ export class LSPService {
     } catch (error) {
       console.error('Error disconnecting from LSP:', error);
     }
+  }
+
+  /**
+   * Reset reconnection state to allow reconnecting
+   */
+  resetReconnect(): void {
+    this.reconnectAttempts = 0;
   }
 
   /**

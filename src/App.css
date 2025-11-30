@@ -3757,3 +3757,133 @@ body {
   overflow: auto;
   min-height: 0;
 }
+
+/* Error Boundary Styles */
+.error-boundary-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 100px;
+  padding: 16px;
+  background-color: rgba(244, 135, 113, 0.1);
+  border: 1px solid rgba(244, 135, 113, 0.3);
+  border-radius: 4px;
+}
+
+.error-boundary-content {
+  text-align: center;
+  max-width: 400px;
+}
+
+.error-boundary-content h3 {
+  color: #f48771;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.error-boundary-section {
+  color: #cccccc;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.error-boundary-details {
+  text-align: left;
+  margin-bottom: 12px;
+  font-size: 11px;
+}
+
+.error-boundary-details summary {
+  color: #9cdcfe;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.error-boundary-details pre {
+  background-color: #1e1e1e;
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  color: #f48771;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.error-boundary-retry,
+.error-boundary-reload {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.error-boundary-retry {
+  background-color: #0e639c;
+  color: white;
+}
+
+.error-boundary-retry:hover {
+  background-color: #1177bb;
+}
+
+.error-boundary-reload {
+  background-color: #3e3e42;
+  color: #cccccc;
+  margin-left: 8px;
+}
+
+.error-boundary-reload:hover {
+  background-color: #4e4e52;
+}
+
+/* App-level error boundary (full page) */
+.app-error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+}
+
+.app-error-content {
+  text-align: center;
+  max-width: 500px;
+  padding: 32px;
+}
+
+.app-error-content h2 {
+  color: #f48771;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.app-error-content p {
+  color: #cccccc;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.app-error-content .error-boundary-details {
+  margin-bottom: 20px;
+}
+
+.app-error-content .error-stack {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.app-error-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
