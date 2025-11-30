@@ -99,7 +99,9 @@ jobs:
       - name: Zip macOS App
         run: |
           cd src-tauri/target/release/bundle/macos
-          zip -r unison-editor.app.zip "Unison Editor.app"
+          APP_NAME=$(ls -d *.app | head -1)
+          echo "Found app: $APP_NAME"
+          zip -r unison-editor.app.zip "$APP_NAME"
 
       - name: Upload macOS App (zip)
         uses: actions/upload-release-asset@v1
