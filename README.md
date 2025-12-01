@@ -1,265 +1,264 @@
 # Unison Editor
 
-A modern, desktop editor for the [Unison programming language](https://www.unison-lang.org/) built with Tauri, React, and Monaco Editor. This editor provides a seamless development experience tailored to Unison's content-addressed, file-less architecture.
+A modern, desktop IDE for the [Unison programming language](https://www.unison-lang.org/) built with Tauri 2, React 19, and Monaco Editor.
+
+## Download
+
+Pre-built installers for macOS and Linux are available at:
+
+**[https://kingsleyh.github.io/unison-editor/](https://kingsleyh.github.io/unison-editor/)**
 
 ## Features
 
-### Current Features (MVP)
+### Core Editor
+- **Monaco Editor** with Unison syntax highlighting and dark theme
+- **Tab-based editing** with multiple files open simultaneously
+- **File Explorer** with drag-and-drop, multi-select, and context menus
+- **Workspace persistence** - tabs, layout, and window state restored on reopen
 
-- ✅ **Monaco Editor Integration** with Unison syntax highlighting
-- ✅ **Project & Branch Management** - Easy switching between projects and branches
-- ✅ **Namespace Browser** - Visual tree view for exploring definitions
-- ✅ **Definition Search** - Fuzzy find across the codebase
-- ✅ **UCM API Integration** - Direct communication with Unison Codebase Manager
-- ✅ **Tab-based Editing** - Multiple definitions open simultaneously
-- ✅ **Connection Status** - Visual indication of UCM connectivity
+### UCM Integration
+- **Integrated UCM Terminal** - Full PTY-based terminal with xterm.js
+- **Automatic UCM lifecycle management** - UCM spawns automatically when opening a workspace
+- **Project & Branch switching** - Switch between Unison projects and branches
+- **Namespace Browser** - Tree view for exploring the codebase with lazy loading
 
-### Planned Features
+### Code Intelligence (via UCM API)
+- **Hover information** - Type signatures and documentation on hover
+- **Autocomplete** - Intelligent completions from the codebase
+- **Go-to-definition** - Click-through navigation to definitions
+- **Definition Cards** - UCM Desktop-style stacked definition viewer
+- **Syntax help** - Built-in help for Unison keywords and operators
 
-- 🔄 **LSP Integration** - Hover information, autocomplete, diagnostics
-- 🔄 **Go-to-Definition** - Jump to definition anywhere in the codebase
-- 🔄 **Find References** - See all usages of a definition
-- 🔄 **Rename Refactoring** - Safe renaming via LSP
-- 🔄 **Virtual File System** - In-memory editing without physical files
-- 🔄 **Save to UCM** - Direct integration with `add`/`update` commands
-- 🔄 **Dependency Visualization** - View dependencies and dependents
-- 🔄 **Git-like Operations** - Branch creation, merging via UI
+### LSP Integration
+- **Real-time diagnostics** - Errors and warnings from UCM's LSP server
+- **WebSocket proxy** - Bridges the frontend to UCM's LSP server
+
+### Evaluation & Testing
+- **Watch expressions** - Lines starting with `>` can be evaluated
+- **Test runner** - Run tests defined with `test>` expressions
+- **Run pane** - Displays evaluation results with syntax highlighting
+
+### File Operations
+- **Create/rename/delete** files and folders
+- **Unison file support** (`.u` extension)
+- **Scratch files** for quick experiments
 
 ## Prerequisites
 
-Before running the Unison Editor, you need:
-
-1. **Rust** (latest stable) - [Install Rust](https://rustup.rs/)
+1. **Rust** (1.77.2 or later) - [Install Rust](https://rustup.rs/)
 2. **Node.js** (v18 or later) - [Install Node.js](https://nodejs.org/)
-3. **Unison** - [Install Unison](https://www.unison-lang.org/docs/quickstart/)
-4. **A running UCM instance** with:
-   - HTTP API enabled (default port: 5858)
-   - LSP server enabled (default port: 5757)
+3. **UCM** (Unison Codebase Manager) - [Install Unison](https://www.unison-lang.org/docs/installation/)
 
-## Setup
+UCM is typically installed via Homebrew:
+```bash
+brew install unisonweb/unison/unison
+```
 
-### 1. Install Dependencies
+## Quick Start
+
+### Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Start UCM
-
-In a separate terminal, start Unison Codebase Manager:
-
-```bash
-ucm
-```
-
-UCM will automatically start the HTTP API server and LSP server. You should see output like:
-
-```
-Codebase API server started at http://127.0.0.1:5858
-LSP server started on port 5757
-```
-
-### 3. Run the Editor
-
-#### Development Mode
+### Development Mode
 
 ```bash
 npm run tauri dev
 ```
 
-This will:
-- Start the Vite dev server for the React frontend
-- Launch the Tauri app in development mode
-- Enable hot module replacement (HMR)
+This starts the Vite dev server and launches the Tauri app with hot module replacement.
 
-#### Production Build
+### Production Build
 
 ```bash
 npm run tauri build
 ```
 
-This creates a production build in `src-tauri/target/release/`.
+Creates platform-specific bundles:
+- **macOS**: `.dmg` and `.app` in `src-tauri/target/release/bundle/`
+- **Linux**: `.AppImage` in `src-tauri/target/release/bundle/`
 
-## Configuration
+## Usage
 
-### UCM Connection Settings
+### Opening a Workspace
 
-By default, the editor connects to UCM at:
-- **Host:** `127.0.0.1`
-- **API Port:** `5858`
-- **LSP Port:** `5757`
+1. Launch the app - you'll see the Welcome Screen
+2. Click "Open Folder" to select a workspace directory
+3. UCM starts automatically and connects to the codebase
+4. If no Unison codebase exists, you can create one or link to an existing project
 
-To use different settings, you can modify the values in `src/store/unisonStore.ts`.
+### Editor Layout
 
-### Environment Variables
+- **Left Sidebar**: File Explorer and Namespace Browser
+- **Center**: Editor tabs with Monaco editor
+- **Right Panel**: Definition Stack (collapsible)
+- **Bottom Panel**: UCM Terminal, Output, and General Terminal (collapsible)
 
-Set these before starting UCM to customize ports:
+### Working with Definitions
 
-```bash
-export UCM_PORT=5858        # HTTP API port
-export UNISON_LSP_PORT=5757 # LSP server port
-ucm
+- Browse the namespace tree to explore definitions
+- Click a definition to open it in the Definition Stack
+- Click "Add to Scratch" to copy source code to a scratch file
+- Use the search box in the Namespace Browser to find definitions
+
+### Watch Expressions
+
+In any `.u` file, prefix a line with `>` to create a watch expression:
+```
+> 1 + 1
+> List.map (x -> x * 2) [1, 2, 3]
 ```
 
-## Architecture
+Click the play button in the gutter to evaluate.
 
+### Tests
+
+Define tests with the `test>` prefix:
 ```
-┌─────────────────────────────────────────┐
-│   Tauri Desktop App                     │
-│   ┌─────────────────────────────────┐   │
-│   │  React Frontend                 │   │
-│   │  - Monaco Editor (Unison)       │   │
-│   │  - Project/Branch Selector      │   │
-│   │  - Namespace Browser            │   │
-│   │  - Tab Management               │   │
-│   └─────────────────────────────────┘   │
-│   ┌─────────────────────────────────┐   │
-│   │  Rust Backend (Tauri)           │   │
-│   │  - HTTP Client (UCM API)        │   │
-│   │  - LSP Client (future)          │   │
-│   │  - File Management              │   │
-│   └─────────────────────────────────┘   │
-└─────────────────────────────────────────┘
-                    │
-                    ▼
-    ┌───────────────────────────────┐
-    │  UCM (Unison Codebase Mgr)    │
-    │  - HTTP API (port 5858)       │
-    │  - LSP Server (port 5757)     │
-    │  - SQLite Codebase            │
-    └───────────────────────────────┘
+test> myTest = check (1 + 1 == 2)
 ```
 
 ## Project Structure
 
 ```
 unison-editor/
-├── src/                      # React frontend
-│   ├── components/           # React components
-│   │   ├── Editor.tsx        # Monaco editor wrapper
-│   │   ├── ProjectBranchSelector.tsx
-│   │   └── NamespaceBrowser.tsx
-│   ├── editor/               # Editor configuration
-│   │   └── unisonLanguage.ts # Unison syntax highlighting
-│   ├── services/             # API clients
-│   │   └── ucmApi.ts         # UCM HTTP API client
-│   ├── store/                # State management
-│   │   └── unisonStore.ts    # Zustand store
-│   ├── App.tsx               # Main app component
-│   └── main.tsx              # Entry point
-├── src-tauri/                # Rust backend
-│   ├── src/
-│   │   ├── commands.rs       # Tauri commands
-│   │   ├── ucm_api.rs        # UCM API client (Rust)
-│   │   └── lib.rs            # Main Rust entry
-│   └── Cargo.toml            # Rust dependencies
+├── src/                          # React frontend
+│   ├── components/               # React components
+│   │   ├── Editor.tsx            # Monaco editor wrapper
+│   │   ├── UCMTerminal.tsx       # Integrated UCM terminal
+│   │   ├── NamespaceBrowser.tsx  # Codebase tree browser
+│   │   ├── FileExplorer.tsx      # Workspace file browser
+│   │   ├── DefinitionStack.tsx   # Definition cards viewer
+│   │   └── ...
+│   ├── services/                 # Business logic
+│   │   ├── ucmApi.ts             # UCM HTTP API client
+│   │   ├── lspService.ts         # LSP client
+│   │   ├── ucmLifecycle.ts       # UCM process management
+│   │   └── monacoUcmProviders.ts # Hover/completion providers
+│   ├── editor/                   # Editor configuration
+│   │   └── unisonLanguage.ts     # Syntax highlighting
+│   ├── store/                    # State management
+│   │   └── unisonStore.ts        # Zustand store
+│   └── theme/                    # Theming
+│       └── unisonTheme.ts        # Dark theme config
+├── src-tauri/                    # Rust backend
+│   └── src/
+│       ├── lib.rs                # Tauri app setup
+│       ├── commands.rs           # Tauri commands
+│       ├── ucm_api.rs            # UCM HTTP API client
+│       ├── ucm_pty.rs            # PTY management for UCM
+│       ├── lsp_proxy.rs          # LSP WebSocket proxy
+│       └── port_utils.rs         # Port allocation
 ├── package.json
 └── README.md
 ```
 
-## Usage
+## Architecture
 
-### Opening Definitions
-
-1. Select a project and branch from the header
-2. Browse the namespace in the left sidebar
-3. Click on a definition to open it in the editor
-4. Or use the search box to find definitions
-
-### Editing Code
-
-1. Click "+ New" to create a new file
-2. Edit code in the Monaco editor
-3. Unsaved changes are indicated with a "•" next to the tab name
-4. (Future) Save changes back to UCM
-
-### Searching
-
-Enter a query in the search box and press Enter or click "Search" to find definitions across the codebase.
+```
+┌─────────────────────────────────────────────────────────────┐
+│   Tauri Desktop App                                         │
+│   ┌───────────────────────────────────────────────────────┐ │
+│   │  React Frontend (Vite + TypeScript)                   │ │
+│   │  • Monaco Editor with Unison syntax                   │ │
+│   │  • xterm.js for UCM terminal                          │ │
+│   │  • Zustand for state management                       │ │
+│   └───────────────────────────────────────────────────────┘ │
+│   ┌───────────────────────────────────────────────────────┐ │
+│   │  Rust Backend (Tauri 2)                               │ │
+│   │  • UCM PTY management (portable-pty)                  │ │
+│   │  • HTTP client for UCM API (reqwest)                  │ │
+│   │  • LSP WebSocket proxy (tokio-tungstenite)            │ │
+│   │  • File system operations                             │ │
+│   └───────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+              ┌───────────────────────────────┐
+              │  UCM (spawned by app)         │
+              │  • HTTP API (dynamic port)    │
+              │  • LSP Server (port 5757)     │
+              │  • SQLite Codebase            │
+              └───────────────────────────────┘
+```
 
 ## Development
-
-### Building the Rust Backend
-
-```bash
-cd src-tauri
-cargo build
-```
 
 ### Running Tests
 
 ```bash
 # Frontend tests
-npm test
+npm test           # Watch mode
+npm run test:run   # Single run
 
 # Rust tests
 cd src-tauri
 cargo test
 ```
 
-### Code Structure
+### Building
 
-#### Frontend
-- **React + TypeScript** for type safety
-- **Zustand** for state management
-- **Monaco Editor** for code editing
-- **@tauri-apps/api** for Rust backend communication
+```bash
+# Check TypeScript
+npx tsc --noEmit
 
-#### Backend
-- **Tauri** for desktop app framework
-- **reqwest** for HTTP API calls to UCM
-- **tokio** for async runtime
-- **serde** for JSON serialization
+# Check Rust
+cd src-tauri && cargo check
+```
+
+## Configuration
+
+### Workspace Settings
+
+Each workspace stores its configuration in `.unison-editor/`:
+- `config.json` - Linked project, default branch
+- `editor-state.json` - Open tabs, layout, window state
+
+### Ports
+
+UCM services use dynamic port allocation:
+- **UCM API**: Starting at 5858
+- **LSP Server**: Fixed at 5757 (UCM limitation)
+- **LSP WebSocket Proxy**: Starting at 5758
 
 ## Troubleshooting
 
-### Editor shows "Not Connected to UCM"
+### UCM Not Found
 
-1. Ensure UCM is running: `ucm` in a terminal
-2. Check that UCM API is accessible:
-   ```bash
-   curl http://127.0.0.1:5858/api/projects
-   ```
-3. Verify ports match in editor configuration
+If you see "UCM Not Found" when opening a workspace:
+1. Ensure UCM is installed: `which ucm`
+2. If installed via Homebrew, ensure `/opt/homebrew/bin` is in your PATH
+3. The app automatically adds common paths, but custom installations may need manual configuration
 
-### No projects showing up
+### UCM Already Running
 
-1. Make sure you have projects in your UCM codebase
-2. Try creating a project:
-   ```
-   .> project.create my-project
-   ```
+If you see "UCM Already Running":
+- Another UCM instance is using the same codebase
+- Close the other UCM instance (terminal, other editor) and click Retry
 
-### Build errors
+### Connection Issues
 
-1. Ensure Rust is installed and up to date:
-   ```bash
-   rustup update
-   ```
-2. Clear node modules and reinstall:
-   ```bash
-   rm -rf node_modules
-   npm install
-   ```
+1. Check the UCM Terminal panel for error messages
+2. Verify UCM started successfully
+3. Try closing and reopening the workspace
 
-## Contributing
+## Tech Stack
 
-This is a work in progress! Contributions are welcome.
+### Frontend
+- **React 19** with TypeScript
+- **Zustand** for state management
+- **Monaco Editor** for code editing
+- **xterm.js** for terminal emulation
+- **Vite 7** for bundling
 
-### Roadmap
-
-1. **Phase 1 (Current)** - Basic editor with browsing
-2. **Phase 2** - LSP integration for intelligent editing
-3. **Phase 3** - Virtual file system and save functionality
-4. **Phase 4** - Advanced features (refactoring, diffs, etc.)
-
-## Resources
-
-- [Unison Documentation](https://www.unison-lang.org/docs/)
-- [Unison Codebase](https://github.com/unisonweb/unison)
-- [UCM Desktop (Elm Reference)](https://github.com/unisonweb/ucm-desktop)
-- [Tauri Documentation](https://tauri.app/)
-- [Monaco Editor](https://microsoft.github.io/monaco-editor/)
+### Backend
+- **Tauri 2** for desktop app framework
+- **portable-pty** for PTY management
+- **reqwest** for HTTP requests
+- **tokio** for async runtime
+- **tokio-tungstenite** for WebSocket proxy
 
 ## License
 
@@ -268,5 +267,5 @@ MIT
 ## Acknowledgments
 
 - Built with inspiration from the Unison team's UCM Desktop
-- Syntax highlighting adapted from Unison's Vim plugin
-- Leverages Unison's excellent LSP server and HTTP API
+- Syntax highlighting adapted from Unison language definitions
+- Icons from the Unison project
