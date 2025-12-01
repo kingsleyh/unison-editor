@@ -59,9 +59,11 @@ export interface LayoutState {
   // Bottom panels
   bottomPanelCollapsed: boolean;    // whole bottom area
   ucmPanelCollapsed: boolean;
-  outputPanelCollapsed: boolean;
+  outputPanelCollapsed: boolean;    // Output panel (typecheck/watch/tests)
+  runPanelCollapsed: boolean;       // Run panel (purple button IO functions)
+  logPanelCollapsed: boolean;       // Log panel
   terminalPanelCollapsed: boolean;
-  bottomPanelWidths: number[];      // [ucm%, output%, terminal%]
+  bottomPanelWidths: number[];      // [ucm%, output%, run%, logs%, terminal%]
 
   // Window state
   windowState?: WindowState;
@@ -83,8 +85,10 @@ export const DEFAULT_LAYOUT: LayoutState = {
   bottomPanelCollapsed: false,
   ucmPanelCollapsed: false,
   outputPanelCollapsed: false,
+  runPanelCollapsed: true,        // Run panel collapsed by default
+  logPanelCollapsed: true,        // Logs collapsed by default
   terminalPanelCollapsed: true,
-  bottomPanelWidths: [40, 35, 25],
+  bottomPanelWidths: [30, 25, 20, 15, 10], // [ucm%, output%, run%, logs%, terminal%]
 };
 
 /**

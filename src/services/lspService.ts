@@ -1,5 +1,6 @@
 import * as lsp from 'vscode-languageserver-protocol';
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from './loggingService';
 
 /**
  * LSP Service for connecting to UCM's Language Server
@@ -43,9 +44,10 @@ export class LSPService {
       this.reconnectTimeoutId = null;
     }
 
+    const connectOp = logger.startOperation('lsp', 'Connecting to LSP server', { host: this.host, port: this.port });
     try {
       await invoke('lsp_connect', { host: this.host, port: this.port });
-      console.log('Connected to UCM LSP server');
+      connectOp.complete();
       this.isConnected = true;
       this.reconnectAttempts = 0;
       this.notifyConnectionChange(true);
@@ -58,7 +60,7 @@ export class LSPService {
       // For a full LSP implementation, you'd need a background thread
       // in Rust that continuously reads from the socket.
     } catch (error) {
-      console.error('Failed to connect to LSP server:', error);
+      connectOp.fail(error);
       this.isConnected = false;
       this.notifyConnectionChange(false);
 
@@ -74,7 +76,7 @@ export class LSPService {
    */
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log('[LSP Service] Max reconnection attempts reached');
+      logger.warn('lsp', 'Max reconnection attempts reached');
       return;
     }
 
@@ -87,7 +89,7 @@ export class LSPService {
     const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts);
     this.reconnectAttempts++;
 
-    console.log(`[LSP Service] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+    logger.info('lsp', `Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`, { delay });
 
     this.reconnectTimeoutId = setTimeout(async () => {
       try {

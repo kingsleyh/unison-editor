@@ -520,19 +520,34 @@ pub fn ucm_typecheck(
     branchName: String,
     state: State<'_, AppState>,
 ) -> Result<TypecheckResult, String> {
+    let start_time = std::time::Instant::now();
     let mut mcp_guard = state.mcp_client.lock().unwrap();
 
     // Spawn MCP client if not already running
-    if mcp_guard.is_none() {
+    let spawned = if mcp_guard.is_none() {
+        log::info!("MCP client not initialized, spawning new instance...");
         *mcp_guard = Some(MCPClient::spawn()?);
-    }
+        log::info!("MCP client spawned in {:?}", start_time.elapsed());
+        true
+    } else {
+        log::debug!("Reusing existing MCP client");
+        false
+    };
 
     let mcp_client = mcp_guard
         .as_mut()
         .ok_or("Failed to get MCP client")?;
 
     // Call the typecheck tool
-    mcp_client.typecheck_code(&code, &projectName, &branchName)
+    let typecheck_start = std::time::Instant::now();
+    let result = mcp_client.typecheck_code(&code, &projectName, &branchName);
+    log::info!(
+        "ucm_typecheck completed in {:?} (spawned: {}, typecheck: {:?})",
+        start_time.elapsed(),
+        spawned,
+        typecheck_start.elapsed()
+    );
+    result
 }
 
 #[tauri::command]
@@ -894,4 +909,45 @@ pub fn get_service_ports(
         lsp_port: *state.lsp_port.lock().unwrap(),
         lsp_proxy_port: *state.lsp_proxy_port.lock().unwrap(),
     }
+}
+
+/// Run a function via UCM PTY for long-running tasks
+/// This bypasses the MCP 60-second timeout by running directly in the PTY
+/// Output is streamed via 'ucm-pty-output' events
+/// Completion is detected when UCM prompt returns
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn ucm_pty_run_task(
+    functionName: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let pty_guard = state.ucm_pty.lock().unwrap();
+    let manager = pty_guard
+        .as_ref()
+        .ok_or("UCM PTY not spawned")?;
+
+    // Send the run command to UCM
+    // Format: "run functionName\n"
+    let cmd = format!("run {}\n", functionName);
+    manager.write(cmd.as_bytes())?;
+
+    log::info!("Started PTY task: run {}", functionName);
+    Ok(())
+}
+
+/// Cancel the current running task in UCM PTY by sending Ctrl+C
+#[tauri::command]
+pub fn ucm_pty_cancel_task(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let pty_guard = state.ucm_pty.lock().unwrap();
+    let manager = pty_guard
+        .as_ref()
+        .ok_or("UCM PTY not spawned")?;
+
+    // Send Ctrl+C (ASCII 0x03) to interrupt the running command
+    manager.write(&[0x03])?;
+
+    log::info!("Sent Ctrl+C to cancel PTY task");
+    Ok(())
 }

@@ -11,13 +11,12 @@ use commands::{AppState, LSPConnection};
 pub fn run() {
   tauri::Builder::default()
     .setup(|app| {
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
+      // Enable logging in both debug and release builds for diagnostics
+      app.handle().plugin(
+        tauri_plugin_log::Builder::default()
+          .level(log::LevelFilter::Info)
+          .build(),
+      )?;
 
       // UCM PTY is now spawned on-demand by the frontend via ucm_pty_spawn command
       // This allows passing the workspace directory for proper file loading
@@ -66,6 +65,9 @@ pub fn run() {
       commands::ucm_pty_get_context,
       commands::ucm_pty_switch_context,
       commands::ucm_pty_kill,
+      // PTY task execution (for long-running IO functions)
+      commands::ucm_pty_run_task,
+      commands::ucm_pty_cancel_task,
       // Service port management
       commands::get_service_ports,
     ])

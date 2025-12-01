@@ -8,6 +8,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { logger } from './loggingService';
 
 export type UCMStatus = 'idle' | 'spawning' | 'running' | 'error' | 'stopped';
 
@@ -51,11 +52,11 @@ class UCMLifecycleService {
     // Note: We don't store the unlisten function because this listener lives for the
     // lifetime of the singleton service
     await listen('ucm-file-lock-error', () => {
-      console.log('[UCMLifecycle] UCM file lock error - resetting status to allow retry');
+      logger.warn('ucm', 'UCM file lock error - another process is using this codebase');
       this.notifyStatusChange('error', 'Another UCM process is using this codebase');
       this.state.ports = null;
     });
-    console.log('[UCMLifecycle] File lock error listener registered');
+    logger.debug('ucm', 'UCM lifecycle service initialized');
   }
 
   /**
@@ -122,34 +123,33 @@ class UCMLifecycleService {
 
     // Already running for this workspace
     if (this.state.status === 'running' && this.state.workspaceDirectory === workspaceDirectory) {
-      console.log('[UCMLifecycle] UCM already running for workspace:', workspaceDirectory);
+      logger.debug('ucm', 'UCM already running for workspace', { workspaceDirectory });
       return true;
     }
 
     // Already spawning
     if (this.state.status === 'spawning') {
-      console.log('[UCMLifecycle] UCM spawn already in progress');
+      logger.debug('ucm', 'UCM spawn already in progress');
       return false;
     }
 
     // In error state (e.g., file lock error) - don't auto-retry, wait for explicit retry
     if (this.state.status === 'error' && this.state.workspaceDirectory === workspaceDirectory) {
-      console.log('[UCMLifecycle] UCM in error state for this workspace, not auto-retrying');
+      logger.debug('ucm', 'UCM in error state for this workspace, not auto-retrying');
       return false;
     }
 
     // If running for different workspace, stop first
     if (this.state.status === 'running' && this.state.workspaceDirectory !== workspaceDirectory) {
-      console.log('[UCMLifecycle] Stopping UCM for workspace change');
+      logger.info('ucm', 'Stopping UCM for workspace change');
       await this.stop();
     }
 
     this.state.workspaceDirectory = workspaceDirectory;
     this.notifyStatusChange('spawning');
 
+    const spawnOp = logger.startOperation('ucm', 'Spawning UCM PTY', { workspaceDirectory });
     try {
-      console.log('[UCMLifecycle] Spawning UCM PTY for workspace:', workspaceDirectory);
-
       // Set up output listener before spawning
       if (!this.unlistenOutput) {
         this.unlistenOutput = await listen<number[]>('ucm-pty-output', (event) => {
@@ -162,12 +162,12 @@ class UCMLifecycleService {
       const ports = await invoke<ServicePorts>('ucm_pty_spawn', { cwd: workspaceDirectory });
       this.state.ports = ports;
 
-      console.log('[UCMLifecycle] UCM PTY spawned successfully with ports:', ports);
+      spawnOp.complete({ ports });
       this.notifyStatusChange('running');
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error('[UCMLifecycle] Failed to spawn UCM PTY:', errorMessage);
+      spawnOp.fail(err);
       this.notifyStatusChange('error', errorMessage);
       return false;
     }
@@ -178,14 +178,14 @@ class UCMLifecycleService {
    */
   async write(data: string): Promise<void> {
     if (this.state.status !== 'running') {
-      console.warn('[UCMLifecycle] Cannot write to UCM - not running');
+      logger.warn('ucm', 'Cannot write to UCM - not running');
       return;
     }
 
     try {
       await invoke('ucm_pty_write', { data });
     } catch (err) {
-      console.error('[UCMLifecycle] Failed to write to UCM PTY:', err);
+      logger.error('ucm', 'Failed to write to UCM PTY', err);
     }
   }
 
@@ -200,7 +200,7 @@ class UCMLifecycleService {
     try {
       await invoke('ucm_pty_resize', { rows, cols });
     } catch (err) {
-      console.error('[UCMLifecycle] Failed to resize UCM PTY:', err);
+      logger.error('ucm', 'Failed to resize UCM PTY', err);
     }
   }
 
@@ -210,7 +210,7 @@ class UCMLifecycleService {
    */
   resetError(): void {
     if (this.state.status === 'error') {
-      console.log('[UCMLifecycle] Resetting error state for retry');
+      logger.info('ucm', 'Resetting error state for retry');
       this.state.status = 'idle';
       this.state.error = null;
       // Keep workspaceDirectory so spawn knows what folder to use
@@ -225,9 +225,8 @@ class UCMLifecycleService {
       return;
     }
 
+    const stopOp = logger.startOperation('ucm', 'Stopping UCM PTY');
     try {
-      console.log('[UCMLifecycle] Stopping UCM PTY');
-
       // Clean up output listener
       if (this.unlistenOutput) {
         this.unlistenOutput();
@@ -243,9 +242,9 @@ class UCMLifecycleService {
       this.notifyStatusChange('stopped');
       this.state.workspaceDirectory = null;
       this.state.ports = null;
-      console.log('[UCMLifecycle] UCM PTY stopped');
+      stopOp.complete();
     } catch (err) {
-      console.error('[UCMLifecycle] Failed to stop UCM PTY:', err);
+      stopOp.fail(err);
     }
   }
 }

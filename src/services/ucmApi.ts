@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Project, Branch, Definition } from '../store/unisonStore';
 import type { DefinitionSummary } from '../types/syntax';
+import { logger } from './loggingService';
 
 export interface NamespaceItem {
   name: string;
@@ -69,12 +70,17 @@ export class UCMApiClient {
    * Get branches for a project
    */
   async getBranches(projectName: string): Promise<Branch[]> {
-    console.log('Invoking get_branches with args:', { projectName });
-    const result = await invoke<Branch[]>('get_branches', {
-      projectName: projectName
-    });
-    console.log('get_branches result:', result);
-    return result;
+    const op = logger.startOperation('ucm', 'Get branches', { projectName });
+    try {
+      const result = await invoke<Branch[]>('get_branches', {
+        projectName: projectName
+      });
+      op.complete({ branchCount: result.length });
+      return result;
+    } catch (err) {
+      op.fail(err);
+      throw err;
+    }
   }
 
   /**

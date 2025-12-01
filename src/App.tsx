@@ -10,6 +10,8 @@ import { BottomPanelSplitter } from './components/BottomPanelSplitter';
 import { TabBar } from './components/TabBar';
 import { CodebaseActions } from './components/CodebaseActions';
 import { RunPane } from './components/RunPane';
+import { RunPanel } from './components/RunPanel';
+import { LogPanel } from './components/LogPanel';
 import { UCMTerminal } from './components/UCMTerminal';
 import { GeneralTerminal } from './components/GeneralTerminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
@@ -45,7 +47,6 @@ function App() {
     updateTab,
     getActiveTab,
     setConnected,
-    setRunPaneCollapsed,
     workspaceDirectory,
     workspaceConfigLoaded,
     setWorkspaceConfigLoaded,
@@ -76,6 +77,8 @@ function App() {
   const termsPanelCollapsed = layout.termsPanelCollapsed;
   const ucmPanelCollapsed = layout.ucmPanelCollapsed;
   const outputPanelCollapsed = layout.outputPanelCollapsed;
+  const runPanelCollapsed = layout.runPanelCollapsed ?? true;  // Default to collapsed
+  const logPanelCollapsed = layout.logPanelCollapsed ?? true;  // Default to collapsed
   const terminalPanelCollapsed = layout.terminalPanelCollapsed;
 
   // Layout update helpers
@@ -90,6 +93,12 @@ function App() {
   }, [setLayout]);
   const setOutputPanelCollapsed = useCallback((collapsed: boolean) => {
     setLayout({ outputPanelCollapsed: collapsed });
+  }, [setLayout]);
+  const setRunPanelCollapsed = useCallback((collapsed: boolean) => {
+    setLayout({ runPanelCollapsed: collapsed });
+  }, [setLayout]);
+  const setLogPanelCollapsed = useCallback((collapsed: boolean) => {
+    setLayout({ logPanelCollapsed: collapsed });
   }, [setLayout]);
   const setTerminalPanelCollapsed = useCallback((collapsed: boolean) => {
     setLayout({ terminalPanelCollapsed: collapsed });
@@ -227,6 +236,12 @@ function App() {
         return;
       }
       workspaceInitializedRef.current = workspaceDirectory;
+
+      // Clear run history and logs when switching workspaces
+      // (each workspace has its own session context)
+      const { clearTaskHistory, clearLogs } = useUnisonStore.getState();
+      clearTaskHistory();
+      clearLogs();
 
       setShowWelcome(false);
 
@@ -490,8 +505,8 @@ function App() {
       return;
     }
 
-    // Auto-expand output pane
-    setRunPaneCollapsed(false);
+    // Auto-expand output panel
+    setOutputPanelCollapsed(false);
 
     // Show loading state
     setRunOutput({ type: 'info', message: 'Evaluating...' });
@@ -585,7 +600,7 @@ function App() {
     }
 
     // Auto-expand output pane
-    setRunPaneCollapsed(false);
+    setOutputPanelCollapsed(false);
 
     // Show loading state
     setRunOutput({ type: 'info', message: `Evaluating ${watches.length} watch expression(s)...` });
@@ -673,7 +688,7 @@ function App() {
     const testName = getTestName(testLine);
 
     // Auto-expand output pane
-    setRunPaneCollapsed(false);
+    setOutputPanelCollapsed(false);
 
     // Show loading state
     setRunOutput({ type: 'info', message: `Running ${testName}...` });
@@ -756,7 +771,7 @@ function App() {
     }
 
     // Auto-expand output pane
-    setRunPaneCollapsed(false);
+    setOutputPanelCollapsed(false);
 
     // Show loading state
     setRunOutput({ type: 'info', message: `Running ${tests.length} test(s)...` });
@@ -834,7 +849,7 @@ function App() {
    * Runs both tests and watches, combining output.
    */
   async function handleAutoRun(content: string) {
-    const { currentProject, currentBranch, setRunOutput, setRunPaneCollapsed, autoRun } = useUnisonStore.getState();
+    const { currentProject, currentBranch, setRunOutput, autoRun } = useUnisonStore.getState();
 
     if (!autoRun || !currentProject || !currentBranch) {
       return;
@@ -846,7 +861,7 @@ function App() {
     void _watches; void _tests; // Intentionally unused for now
 
     // Auto-expand output pane
-    setRunPaneCollapsed(false);
+    setOutputPanelCollapsed(false);
     setRunOutput({ type: 'info', message: 'Auto-running...' });
 
     try {
@@ -925,20 +940,20 @@ function App() {
       return;
     }
 
-    const { currentProject, currentBranch, setRunOutput, setRunPaneCollapsed } = useUnisonStore.getState();
+    const { currentProject, currentBranch, setRunOutput } = useUnisonStore.getState();
 
     if (!currentProject || !currentBranch) {
       setRunOutput({
         type: 'error',
         message: 'No project/branch selected. Please select a project first.',
       });
-      setRunPaneCollapsed(false);
+      setOutputPanelCollapsed(false);
       return;
     }
 
     const content = activeTab.content;
 
-    setRunPaneCollapsed(false);
+    setOutputPanelCollapsed(false);
     setRunOutput({ type: 'info', message: 'Typechecking...' });
 
     try {
@@ -997,56 +1012,42 @@ function App() {
    * Executes a function that has IO and Exception abilities.
    */
   async function handleRunFunction(functionName: string) {
-    const { currentProject, currentBranch, setRunOutput, setRunPaneCollapsed } = useUnisonStore.getState();
+    const { currentProject, currentBranch, startTask, addLog } = useUnisonStore.getState();
 
     if (!currentProject || !currentBranch) {
-      setRunOutput({
-        type: 'error',
-        message: 'No project/branch selected. Please select a project first.',
+      addLog({
+        level: 'error',
+        category: 'run',
+        message: 'No project/branch selected',
       });
-      setRunPaneCollapsed(false);
       return;
     }
 
-    // Auto-expand output pane
-    setRunPaneCollapsed(false);
+    // Auto-expand run panel (for PTY-based IO execution)
+    setRunPanelCollapsed(false);
 
-    // Show loading state
-    setRunOutput({ type: 'info', message: `Running ${functionName}...` });
+    // Start task tracking
+    const taskId = startTask(functionName);
+    addLog({
+      level: 'info',
+      category: 'run',
+      message: `Starting IO function: ${functionName}`,
+      details: { taskId, project: currentProject.name, branch: currentBranch.name },
+    });
 
     try {
-      const result = await client.runFunction(
-        currentProject.name,
-        currentBranch.name,
-        functionName
-      );
-
-      if (result.errors.length > 0) {
-        setRunOutput({
-          type: 'error',
-          message: result.errors.join('\n'),
-        });
-      } else if (result.output) {
-        // Show stdout/output from the function
-        setRunOutput({
-          type: 'success',
-          message: result.output,
-        });
-      } else if (result.stdout) {
-        setRunOutput({
-          type: 'success',
-          message: result.stdout,
-        });
-      } else {
-        setRunOutput({
-          type: 'success',
-          message: `${functionName} completed successfully`,
-        });
-      }
+      // Use PTY-based execution for all IO functions (bypasses 60s MCP timeout)
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('ucm_pty_run_task', { functionName });
+      // Output will stream via PTY events, completion handled by RunPanel
     } catch (err) {
-      setRunOutput({
-        type: 'error',
-        message: `Failed to run ${functionName}: ${err instanceof Error ? err.message : String(err)}`,
+      const { completeTask } = useUnisonStore.getState();
+      completeTask(taskId, 'failed', err instanceof Error ? err.message : String(err));
+      addLog({
+        level: 'error',
+        category: 'run',
+        message: `Failed to start ${functionName}`,
+        error: err instanceof Error ? { name: err.name, message: err.message } : undefined,
       });
     }
   }
@@ -1452,7 +1453,7 @@ function App() {
                               collapsed: ucmPanelCollapsed,
                               onCollapse: setUcmPanelCollapsed,
                               minWidth: 200,
-                              defaultWidth: 40,
+                              defaultWidth: 30,
                             },
                             {
                               id: 'output',
@@ -1465,12 +1466,56 @@ function App() {
                               collapsed: outputPanelCollapsed,
                               onCollapse: setOutputPanelCollapsed,
                               minWidth: 150,
-                              defaultWidth: 35,
+                              defaultWidth: 25,
                               headerActions: (
                                 <button
                                   className="bottom-panel-action-btn"
                                   onClick={() => useUnisonStore.getState().clearRunOutput()}
                                   title="Clear output"
+                                >
+                                  Clear
+                                </button>
+                              ),
+                            },
+                            {
+                              id: 'run',
+                              label: 'Run',
+                              component: (
+                                <ErrorBoundary name="Run Panel">
+                                  <RunPanel isCollapsed={runPanelCollapsed} />
+                                </ErrorBoundary>
+                              ),
+                              collapsed: runPanelCollapsed,
+                              onCollapse: setRunPanelCollapsed,
+                              minWidth: 150,
+                              defaultWidth: 20,
+                              headerActions: (
+                                <button
+                                  className="bottom-panel-action-btn"
+                                  onClick={() => useUnisonStore.getState().clearTaskHistory()}
+                                  title="Clear run history"
+                                >
+                                  Clear
+                                </button>
+                              ),
+                            },
+                            {
+                              id: 'logs',
+                              label: 'Logs',
+                              component: (
+                                <ErrorBoundary name="Log Panel">
+                                  <LogPanel isCollapsed={logPanelCollapsed} />
+                                </ErrorBoundary>
+                              ),
+                              collapsed: logPanelCollapsed,
+                              onCollapse: setLogPanelCollapsed,
+                              minWidth: 150,
+                              defaultWidth: 20,
+                              headerActions: (
+                                <button
+                                  className="bottom-panel-action-btn"
+                                  onClick={() => useUnisonStore.getState().clearLogs()}
+                                  title="Clear logs"
                                 >
                                   Clear
                                 </button>
@@ -1487,7 +1532,7 @@ function App() {
                               collapsed: terminalPanelCollapsed,
                               onCollapse: setTerminalPanelCollapsed,
                               minWidth: 150,
-                              defaultWidth: 25,
+                              defaultWidth: 15,
                             },
                           ]}
                         />
