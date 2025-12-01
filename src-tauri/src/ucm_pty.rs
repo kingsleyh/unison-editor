@@ -115,6 +115,11 @@ impl UCMPtyManager {
         log::info!("Setting UCM PATH to: {}", new_path);
         cmd.env("PATH", new_path);
 
+        // Set TERM environment variable for proper terminal emulation
+        // This is required for 'less' (used by UCM for paging) to work properly
+        // Without this, 'less' shows "WARNING: terminal is not fully functional"
+        cmd.env("TERM", "xterm-256color");
+
         // Set working directory if provided, otherwise use home directory
         if let Some(dir) = cwd {
             log::info!("Setting UCM working directory to: {}", dir);
