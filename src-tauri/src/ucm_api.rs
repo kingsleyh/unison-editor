@@ -344,8 +344,16 @@ pub struct UCMApiClient {
 
 impl UCMApiClient {
     pub fn new(host: &str, port: u16) -> Self {
+        // Create client with timeouts to prevent indefinite hangs
+        // UCM can take a few seconds to respond for complex operations
+        let client = Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
-            client: Client::new(),
+            client,
             base_url: format!("http://{}:{}/codebase/api", host, port),
         }
     }

@@ -120,6 +120,40 @@ impl UCMPtyManager {
         // Without this, 'less' shows "WARNING: terminal is not fully functional"
         cmd.env("TERM", "xterm-256color");
 
+        // Set locale to UTF-8 to fix emoji and special character encoding
+        // Without this, emoji show as hex bytes like <F0><9F><93><9A>
+        cmd.env("LANG", "en_US.UTF-8");
+        cmd.env("LC_ALL", "en_US.UTF-8");
+
+        // Enable truecolor support for rich terminal colors
+        cmd.env("COLORTERM", "truecolor");
+
+        // Tell ncurses/terminfo where to find terminal capability definitions
+        // macOS GUI apps don't have this set, causing "terminal is not fully functional"
+        cmd.env(
+            "TERMINFO_DIRS",
+            "/usr/share/terminfo:/lib/terminfo:/etc/terminfo",
+        );
+
+        // Ensure HOME is set - macOS GUI apps often don't have this set
+        // Always set it from dirs::home_dir() for consistency
+        if let Some(home) = dirs::home_dir() {
+            cmd.env("HOME", home.to_string_lossy().to_string());
+        }
+
+        // Force color output - some tools check these in addition to TERM/COLORTERM
+        cmd.env("CLICOLOR", "1");
+        cmd.env("CLICOLOR_FORCE", "1");
+        // Force ANSI colors in some Haskell programs (which UCM is built with)
+        cmd.env("FORCE_COLOR", "1");
+        // Additional environment variables for Haskell/GHC programs
+        // These help convince the Haskell runtime that it's running in a color-capable terminal
+        cmd.env("ANSICON", "1");  // Windows compatibility flag that some tools check
+        cmd.env("ConEmuANSI", "ON");  // ConEmu compatibility
+        // Tell UCM specifically to use colors (if it respects this)
+        cmd.env("UCM_COLOR", "always");
+        cmd.env("NO_COLOR", "");  // Explicitly unset NO_COLOR to ensure colors are enabled
+
         // Set working directory if provided, otherwise use home directory
         if let Some(dir) = cwd {
             log::info!("Setting UCM working directory to: {}", dir);

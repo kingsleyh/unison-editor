@@ -9,6 +9,32 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Get PATH environment variable with common UCM installation locations
+/// This is needed for macOS packaged apps which don't inherit shell PATH
+fn get_ucm_path() -> String {
+    let home = dirs::home_dir()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Common locations where UCM might be installed
+    let ucm_paths = vec![
+        format!("{}/.local/bin", home),           // Linux/macOS user install
+        format!("{}/.cargo/bin", home),           // Cargo install
+        "/usr/local/bin".to_string(),             // Homebrew/manual install
+        "/opt/homebrew/bin".to_string(),          // Homebrew on Apple Silicon
+        "/usr/bin".to_string(),                   // System install
+        format!("{}/bin", home),                  // User bin
+    ];
+
+    // Get existing PATH and prepend our paths
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    if existing_path.is_empty() {
+        ucm_paths.join(":")
+    } else {
+        format!("{}:{}", ucm_paths.join(":"), existing_path)
+    }
+}
+
 /// Result of an UCM update operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateResult {
@@ -81,8 +107,16 @@ pub struct MCPClient {
 impl MCPClient {
     /// Spawn a new `ucm mcp` process
     pub fn spawn() -> Result<Self, String> {
+        // Set PATH to include common UCM installation locations
+        // This is required for macOS packaged apps which don't inherit shell PATH
+        let path = get_ucm_path();
+
         let mut process = Command::new("ucm")
             .arg("mcp")
+            .env("PATH", &path)
+            .env("HOME", dirs::home_dir().map(|h| h.to_string_lossy().to_string()).unwrap_or_default())
+            .env("LANG", "en_US.UTF-8")
+            .env("LC_ALL", "en_US.UTF-8")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

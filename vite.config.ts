@@ -16,7 +16,7 @@ export default defineConfig({
   // Build configuration
   build: {
     // Increase chunk size warning limit for Monaco editor
-    chunkSizeWarningLimit: 2000,
+    chunkSizeWarningLimit: 4000,
     rollupOptions: {
       output: {
         // Manual chunks for better code splitting
@@ -31,5 +31,10 @@ export default defineConfig({
   // Resolve configuration
   resolve: {
     dedupe: ['monaco-editor'],
+  },
+
+  // Worker configuration for Monaco
+  worker: {
+    format: 'es',
   },
 })

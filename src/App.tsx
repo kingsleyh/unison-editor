@@ -15,6 +15,8 @@ import { GeneralTerminal } from './components/GeneralTerminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { UCMConflictModal } from './components/UCMConflictModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { FileCreationModal } from './components/FileCreationModal';
+import { AlertModal } from './components/AlertModal';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
@@ -95,6 +97,12 @@ function App() {
 
   // Diagnostic count from the editor (for status indicator)
   const [diagnosticCount, setDiagnosticCount] = useState<DiagnosticCount>({ errors: 0, warnings: 0 });
+
+  // State for file creation modal (shown when "Create Scratch File" is clicked)
+  const [showFileCreationModal, setShowFileCreationModal] = useState(false);
+
+  // State for alert modal (used instead of native alert() which doesn't work in Tauri)
+  const [alertModal, setAlertModal] = useState<{ title?: string; message: string } | null>(null);
 
   const client = getUCMApiClient();
   const saveTimeoutRef = useRef<number | null>(null);
@@ -1133,15 +1141,11 @@ function App() {
       // Trigger autosave
       triggerAutoSaveForTab(activeTab.id);
     } else {
-      // Create new scratch file with the definition
-      const newTab: EditorTab = {
-        id: `tab-${Date.now()}`,
-        title: 'Scratch',
-        content: `-- Scratch file\n\n-- From ${name}\n${source}\n`,
-        language: 'unison',
-        isDirty: false,
-      };
-      addTab(newTab);
+      // No file open - show alert asking user to open a file first
+      setAlertModal({
+        title: 'No File Open',
+        message: 'Please open a file first before adding definitions.',
+      });
     }
   }
 
@@ -1162,15 +1166,11 @@ function App() {
       // Trigger autosave
       triggerAutoSaveForTab(activeTab.id);
     } else {
-      // Create new scratch file
-      const newTab: EditorTab = {
-        id: `tab-${Date.now()}`,
-        title: 'Scratch',
-        content: `-- Scratch file\n\n${content}`,
-        language: 'unison',
-        isDirty: false,
-      };
-      addTab(newTab);
+      // No file open - show alert asking user to open a file first
+      setAlertModal({
+        title: 'No File Open',
+        message: 'Please open a file first before adding definitions.',
+      });
     }
   }
 
@@ -1265,14 +1265,38 @@ function App() {
   }, [saveCurrentFile]);
 
   function handleNewFile() {
-    const newTab: EditorTab = {
-      id: `tab-${Date.now()}`,
-      title: 'Scratch',
-      content: '-- Scratch file\n\n',
-      language: 'unison',
-      isDirty: false,
-    };
-    addTab(newTab);
+    // Show the file creation modal instead of creating an in-memory scratch file
+    setShowFileCreationModal(true);
+  }
+
+  // Handle creating a new file from the file creation modal
+  async function handleCreateNewFile(filename: string, template: string) {
+    if (!workspaceDirectory) return;
+
+    try {
+      const { getFileSystemService } = await import('./services/fileSystem');
+      const fileSystemService = getFileSystemService();
+
+      const newPath = `${workspaceDirectory}/${filename}`;
+
+      // Create file and write template content
+      await fileSystemService.createFile(newPath, false);
+      await fileSystemService.writeFile(newPath, template);
+
+      // Open the new file in a tab
+      const newTab: EditorTab = {
+        id: `tab-${Date.now()}`,
+        title: filename,
+        content: template,
+        language: 'unison',
+        isDirty: false,
+        filePath: newPath,
+      };
+      addTab(newTab);
+    } catch (err) {
+      console.error('Failed to create file:', err);
+      alert(`Failed to create file: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   }
 
   const activeTab = getActiveTab();
@@ -1480,6 +1504,20 @@ function App() {
       <UCMConflictModal
         isOpen={showConflictModal}
         onRetry={handleConflictRetry}
+      />
+
+      <FileCreationModal
+        isOpen={showFileCreationModal}
+        onClose={() => setShowFileCreationModal(false)}
+        onCreate={handleCreateNewFile}
+        defaultPath={workspaceDirectory || ''}
+      />
+
+      <AlertModal
+        isOpen={alertModal !== null}
+        onClose={() => setAlertModal(null)}
+        title={alertModal?.title}
+        message={alertModal?.message || ''}
       />
     </div>
   );
