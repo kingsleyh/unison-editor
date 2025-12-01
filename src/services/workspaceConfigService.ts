@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from './loggingService';
 
 const CONFIG_DIR = '.unison-editor';
 const CONFIG_FILE = 'config.json';
@@ -170,6 +171,7 @@ export class WorkspaceConfigService {
    * Creates .unison-editor/ directory and config.json
    */
   async initWorkspace(workspacePath: string): Promise<void> {
+    const op = logger.startOperation('system', 'Initialize workspace', { workspacePath });
     const dirPath = this.getConfigDirPath(workspacePath);
 
     // Create .unison-editor directory
@@ -177,7 +179,7 @@ export class WorkspaceConfigService {
       await invoke('create_file', { path: dirPath, isDirectory: true });
     } catch (error) {
       // Directory might already exist, that's ok
-      console.warn('Config dir may already exist:', error);
+      logger.debug('system', 'Config dir may already exist', { error: String(error) });
     }
 
     // Write default config
@@ -187,6 +189,8 @@ export class WorkspaceConfigService {
     // Write default editor state
     const defaultState = getDefaultEditorState();
     await this.saveEditorState(workspacePath, defaultState);
+
+    op.complete();
   }
 
   /**
@@ -197,9 +201,13 @@ export class WorkspaceConfigService {
       const configPath = this.getConfigFilePath(workspacePath);
       const content = await invoke<string>('read_file', { path: configPath });
       const config = JSON.parse(content) as WorkspaceConfig;
+      logger.info('system', 'Loaded workspace config', {
+        workspacePath,
+        linkedProject: config.linkedProject
+      });
       return config;
     } catch (error) {
-      console.error('Failed to load workspace config:', error);
+      logger.error('system', 'Failed to load workspace config', error, { workspacePath });
       return null;
     }
   }
@@ -212,8 +220,9 @@ export class WorkspaceConfigService {
       const configPath = this.getConfigFilePath(workspacePath);
       const content = JSON.stringify(config, null, 2);
       await invoke('write_file', { path: configPath, content });
+      logger.debug('system', 'Saved workspace config', { workspacePath });
     } catch (error) {
-      console.error('Failed to save workspace config:', error);
+      logger.error('system', 'Failed to save workspace config', error, { workspacePath });
       throw new Error(`Failed to save workspace config: ${error}`);
     }
   }
@@ -230,9 +239,14 @@ export class WorkspaceConfigService {
       }
       const content = await invoke<string>('read_file', { path: statePath });
       const state = JSON.parse(content) as WorkspaceEditorState;
+      logger.info('system', 'Loaded editor state', {
+        workspacePath,
+        tabCount: state.tabs.length,
+        cardCount: state.definitionCards?.length ?? 0
+      });
       return state;
     } catch (error) {
-      console.error('Failed to load editor state:', error);
+      logger.error('system', 'Failed to load editor state', error, { workspacePath });
       return null;
     }
   }
@@ -245,8 +259,13 @@ export class WorkspaceConfigService {
       const statePath = this.getEditorStatePath(workspacePath);
       const content = JSON.stringify(state, null, 2);
       await invoke('write_file', { path: statePath, content });
+      logger.debug('system', 'Saved editor state', {
+        workspacePath,
+        tabCount: state.tabs.length,
+        cardCount: state.definitionCards?.length ?? 0
+      });
     } catch (error) {
-      console.error('Failed to save editor state:', error);
+      logger.error('system', 'Failed to save editor state', error, { workspacePath });
       // Don't throw - state saving is best-effort
     }
   }

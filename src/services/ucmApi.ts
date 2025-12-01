@@ -63,7 +63,15 @@ export class UCMApiClient {
    * Get all projects
    */
   async getProjects(): Promise<Project[]> {
-    return invoke<Project[]>('get_projects');
+    const op = logger.startOperation('network', 'Get projects');
+    try {
+      const result = await invoke<Project[]>('get_projects');
+      op.complete({ projectCount: result.length });
+      return result;
+    } catch (err) {
+      op.fail(err);
+      throw err;
+    }
   }
 
   /**
@@ -204,10 +212,17 @@ export class UCMApiClient {
     projectName: string,
     branchName: string
   ): Promise<void> {
-    return invoke('switch_project_branch', {
-      projectName,
-      branchName,
-    });
+    const op = logger.startOperation('ucm', 'Switch context', { projectName, branchName });
+    try {
+      await invoke('switch_project_branch', {
+        projectName,
+        branchName,
+      });
+      op.complete();
+    } catch (err) {
+      op.fail(err);
+      throw err;
+    }
   }
 
   /**
@@ -221,11 +236,28 @@ export class UCMApiClient {
     branchName: string,
     code: string
   ): Promise<TypecheckResult> {
-    return invoke<TypecheckResult>('ucm_typecheck', {
+    const op = logger.startOperation('run', 'Typecheck code', {
       projectName,
       branchName,
-      code,
+      codeLength: code.length
     });
+    try {
+      const result = await invoke<TypecheckResult>('ucm_typecheck', {
+        projectName,
+        branchName,
+        code,
+      });
+      op.complete({
+        success: result.success,
+        errorCount: result.errors.length,
+        watchCount: result.watchResults.length,
+        testCount: result.testResults.length
+      });
+      return result;
+    } catch (err) {
+      op.fail(err);
+      throw err;
+    }
   }
 
   /**
@@ -239,11 +271,27 @@ export class UCMApiClient {
     branchName: string,
     subnamespace?: string
   ): Promise<RunTestsResult> {
-    return invoke<RunTestsResult>('ucm_run_tests', {
+    const op = logger.startOperation('run', 'Run tests', {
       projectName,
       branchName,
-      subnamespace,
+      subnamespace
     });
+    try {
+      const result = await invoke<RunTestsResult>('ucm_run_tests', {
+        projectName,
+        branchName,
+        subnamespace,
+      });
+      op.complete({
+        success: result.success,
+        testCount: result.testResults.length,
+        passed: result.testResults.filter(t => t.passed).length
+      });
+      return result;
+    } catch (err) {
+      op.fail(err);
+      throw err;
+    }
   }
 
   /**

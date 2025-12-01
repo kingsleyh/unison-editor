@@ -8,6 +8,7 @@
 
 import { getUCMLifecycleService } from './ucmLifecycle';
 import { emit } from '@tauri-apps/api/event';
+import { logger } from './loggingService';
 
 /**
  * Emit an event to show/focus the UCM terminal panel
@@ -38,6 +39,7 @@ async function writeCommand(command: string): Promise<void> {
  * @param newFQN - New fully qualified name
  */
 export async function moveTerm(oldFQN: string, newFQN: string): Promise<void> {
+  logger.info('ucm', 'Moving term', { oldFQN, newFQN });
   await showTerminal();
   await writeCommand(`move.term ${oldFQN} ${newFQN}`);
 }
@@ -49,6 +51,7 @@ export async function moveTerm(oldFQN: string, newFQN: string): Promise<void> {
  * @param newFQN - New fully qualified name
  */
 export async function moveType(oldFQN: string, newFQN: string): Promise<void> {
+  logger.info('ucm', 'Moving type', { oldFQN, newFQN });
   await showTerminal();
   await writeCommand(`move.type ${oldFQN} ${newFQN}`);
 }
@@ -60,6 +63,7 @@ export async function moveType(oldFQN: string, newFQN: string): Promise<void> {
  * @param newPath - New namespace path
  */
 export async function moveNamespace(oldPath: string, newPath: string): Promise<void> {
+  logger.info('ucm', 'Moving namespace', { oldPath, newPath });
   await showTerminal();
   await writeCommand(`move.namespace ${oldPath} ${newPath}`);
 }
@@ -70,6 +74,7 @@ export async function moveNamespace(oldPath: string, newPath: string): Promise<v
  * @param fqn - Fully qualified name of the term to delete
  */
 export async function deleteTerm(fqn: string): Promise<void> {
+  logger.info('ucm', 'Deleting term', { fqn });
   await showTerminal();
   // Use delete.term.force to skip confirmation prompts
   await writeCommand(`delete.term.force ${fqn}`);
@@ -81,6 +86,7 @@ export async function deleteTerm(fqn: string): Promise<void> {
  * @param fqn - Fully qualified name of the type to delete
  */
 export async function deleteType(fqn: string): Promise<void> {
+  logger.info('ucm', 'Deleting type', { fqn });
   await showTerminal();
   // Use delete.type.force to skip confirmation prompts
   await writeCommand(`delete.type.force ${fqn}`);
@@ -92,6 +98,7 @@ export async function deleteType(fqn: string): Promise<void> {
  * @param path - Namespace path to delete
  */
 export async function deleteNamespace(path: string): Promise<void> {
+  logger.info('ucm', 'Deleting namespace', { path });
   await showTerminal();
   // Use delete.namespace.force to skip confirmation prompts
   await writeCommand(`delete.namespace.force ${path}`);

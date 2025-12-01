@@ -22,6 +22,7 @@ import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
 import { applyThemeVariables, loadTheme } from './theme/unisonTheme';
+import { getLoggingService } from './services/loggingService';
 import { buildSingleWatchCode, buildSingleTestCode, buildAllWatchesCode, buildAllTestsCode, getTestName, detectTestExpressions, detectWatchExpressions } from './services/watchExpressionService';
 import { getWorkspaceConfigService, type WorkspaceEditorState, type PersistedTab, type WindowState } from './services/workspaceConfigService';
 import { getUCMLifecycleService } from './services/ucmLifecycle';
@@ -123,6 +124,30 @@ function App() {
   useEffect(() => {
     const theme = loadTheme();
     applyThemeVariables(theme);
+  }, []);
+
+  // Connect logging service to store
+  // This syncs LoggingService logs to Zustand store for UI display
+  useEffect(() => {
+    const loggingService = getLoggingService();
+    const { addLog } = useUnisonStore.getState();
+
+    // Subscribe to new log entries and forward to store
+    const unsubscribe = loggingService.onLog((entry) => {
+      // Forward the complete log entry to the store
+      // (addLog will generate a new ID, but that's fine - the service's ID is just internal)
+      addLog({
+        level: entry.level,
+        category: entry.category,
+        message: entry.message,
+        details: entry.details,
+        source: entry.source,
+        duration: entry.duration,
+        error: entry.error,
+      });
+    });
+
+    return unsubscribe;
   }, []);
 
   // Listen for UCM file lock error (another UCM is using this codebase)

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { logger } from './loggingService';
 
 export interface FileNode {
   name: string;
@@ -19,8 +20,10 @@ export class FileSystemService {
    */
   async readFile(path: string, workspace?: string): Promise<string> {
     try {
-      return await invoke<string>('read_file', { path, workspace });
+      const content = await invoke<string>('read_file', { path, workspace });
+      return content;
     } catch (error) {
+      logger.error('file', 'Failed to read file', error, { path });
       throw new Error(`Failed to read file: ${error}`);
     }
   }
@@ -35,6 +38,7 @@ export class FileSystemService {
     try {
       await invoke('write_file', { path, content, workspace });
     } catch (error) {
+      logger.error('file', 'Failed to write file', error, { path });
       throw new Error(`Failed to write file: ${error}`);
     }
   }
@@ -47,8 +51,10 @@ export class FileSystemService {
    */
   async listDirectory(path: string, recursive: boolean = false, workspace?: string): Promise<FileNode[]> {
     try {
-      return await invoke<FileNode[]>('list_directory', { path, recursive, workspace });
+      const result = await invoke<FileNode[]>('list_directory', { path, recursive, workspace });
+      return result;
     } catch (error) {
+      logger.error('file', 'Failed to list directory', error, { path });
       throw new Error(`Failed to list directory: ${error}`);
     }
   }
@@ -60,10 +66,14 @@ export class FileSystemService {
    * @param workspace - Optional workspace root for path validation
    */
   async createFile(path: string, isDirectory: boolean, workspace?: string): Promise<void> {
+    const itemType = isDirectory ? 'directory' : 'file';
+    const op = logger.startOperation('file', `Create ${itemType}`, { path });
     try {
       await invoke('create_file', { path, isDirectory, workspace });
+      op.complete();
     } catch (error) {
-      throw new Error(`Failed to create ${isDirectory ? 'directory' : 'file'}: ${error}`);
+      op.fail(error);
+      throw new Error(`Failed to create ${itemType}: ${error}`);
     }
   }
 
@@ -73,9 +83,12 @@ export class FileSystemService {
    * @param workspace - Optional workspace root for path validation
    */
   async deleteFile(path: string, workspace?: string): Promise<void> {
+    const op = logger.startOperation('file', 'Delete file', { path });
     try {
       await invoke('delete_file', { path, workspace });
+      op.complete();
     } catch (error) {
+      op.fail(error);
       throw new Error(`Failed to delete: ${error}`);
     }
   }
@@ -87,9 +100,12 @@ export class FileSystemService {
    * @param workspace - Optional workspace root for path validation
    */
   async renameFile(oldPath: string, newPath: string, workspace?: string): Promise<void> {
+    const op = logger.startOperation('file', 'Rename file', { oldPath, newPath });
     try {
       await invoke('rename_file', { oldPath, newPath, workspace });
+      op.complete();
     } catch (error) {
+      op.fail(error);
       throw new Error(`Failed to rename: ${error}`);
     }
   }

@@ -19,6 +19,7 @@ import {
   normalizeHash,
   parseLibInfo,
 } from '../types/navigation';
+import { logger } from './loggingService';
 
 interface SearchResult {
   name: string;
@@ -64,11 +65,11 @@ export class DefinitionResolver {
     // Check cache first
     const cached = this.getCached(identifier);
     if (cached) {
-      console.log('[DefinitionResolver] Cache hit for:', identifier);
+      logger.debug('editor', 'Definition cache hit', { identifier });
       return cached;
     }
 
-    console.log('[DefinitionResolver] Resolving:', identifier);
+    logger.debug('editor', 'Resolving definition', { identifier });
 
     try {
       if (isHash(identifier)) {
@@ -79,7 +80,7 @@ export class DefinitionResolver {
         return await this.resolveByFQN(identifier, projectName, branchName);
       }
     } catch (error) {
-      console.error('[DefinitionResolver] Resolution error:', error);
+      logger.error('editor', 'Definition resolution failed', error, { identifier });
       return null;
     }
   }
@@ -103,7 +104,7 @@ export class DefinitionResolver {
     });
 
     if (!definition) {
-      console.log('[DefinitionResolver] Hash not found:', hash);
+      logger.debug('editor', 'Hash not found', { hash });
       return null;
     }
 
@@ -129,18 +130,18 @@ export class DefinitionResolver {
 
         if (matchByHash) {
           fullFqn = matchByHash.name;
-          console.log('[DefinitionResolver] Found full FQN via search:', fullFqn);
+          logger.debug('editor', 'Found full FQN via search', { fullFqn });
         } else {
           // No exact hash match - use best name match as fallback
           const bestMatch = this.findBestMatch(definition.name, searchResults);
           if (bestMatch) {
             fullFqn = bestMatch.name;
-            console.log('[DefinitionResolver] Using best match FQN:', fullFqn);
+            logger.debug('editor', 'Using best match FQN', { fullFqn });
           }
         }
       }
     } catch (err) {
-      console.warn('[DefinitionResolver] FQN search failed, using API name:', err);
+      logger.warn('editor', 'FQN search failed, using API name', { error: String(err) });
     }
 
     const resolved = this.createResolvedDefinition(definition, fullFqn);
@@ -162,7 +163,7 @@ export class DefinitionResolver {
     branchName: string
   ): Promise<ResolvedDefinition | null> {
     // Always search first to get the canonical full FQN
-    console.log('[DefinitionResolver] Searching for FQN:', fqn);
+    logger.debug('editor', 'Searching for FQN', { fqn });
 
     const searchResults = await invoke<SearchResult[]>('find_definitions', {
       projectName,
@@ -172,7 +173,7 @@ export class DefinitionResolver {
     });
 
     if (!searchResults || searchResults.length === 0) {
-      console.log('[DefinitionResolver] No search results for:', fqn);
+      logger.debug('editor', 'No search results for FQN', { fqn });
       // Fall back to direct lookup as last resort
       const definition = await invoke<DefinitionSummary | null>('get_definition', {
         projectName,
@@ -180,7 +181,7 @@ export class DefinitionResolver {
         name: fqn,
       });
       if (definition) {
-        console.log('[DefinitionResolver] Direct lookup succeeded, but no FQN available');
+        logger.debug('editor', 'Direct lookup succeeded, but no FQN available');
         const resolved = this.createResolvedDefinition(definition, fqn);
         this.cacheResolution(resolved);
         return resolved;
@@ -191,11 +192,11 @@ export class DefinitionResolver {
     // Find best match from search results
     const match = this.findBestMatch(fqn, searchResults);
     if (!match) {
-      console.log('[DefinitionResolver] No matching result for:', fqn);
+      logger.debug('editor', 'No matching result for FQN', { fqn });
       return null;
     }
 
-    console.log('[DefinitionResolver] Found match:', match.name);
+    logger.debug('editor', 'Found match', { fqn, matchName: match.name });
 
     // Load the full definition using the matched name
     let definition = await invoke<DefinitionSummary | null>('get_definition', {
@@ -214,7 +215,7 @@ export class DefinitionResolver {
     }
 
     if (!definition) {
-      console.log('[DefinitionResolver] Failed to load definition for match:', match.name);
+      logger.warn('editor', 'Failed to load definition for match', { matchName: match.name });
       return null;
     }
 
@@ -348,7 +349,7 @@ export class DefinitionResolver {
     // Cache FQN → hash mapping (reverse lookup)
     this.fqnToHashCache.set(resolved.fqn, resolved.hash);
 
-    console.log('[DefinitionResolver] Cached:', resolved.fqn, '→', resolved.hash);
+    logger.debug('editor', 'Cached definition', { fqn: resolved.fqn, hash: resolved.hash });
   }
 
   /**
@@ -378,9 +379,10 @@ export class DefinitionResolver {
    * Clear the cache (e.g., after project/branch change).
    */
   clearCache(): void {
+    const stats = this.getCacheStats();
     this.hashCache.clear();
     this.fqnToHashCache.clear();
-    console.log('[DefinitionResolver] Cache cleared');
+    logger.info('editor', 'Definition cache cleared', stats);
   }
 
   /**
