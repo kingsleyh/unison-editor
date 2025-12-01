@@ -10,7 +10,6 @@ import { BottomPanelSplitter } from './components/BottomPanelSplitter';
 import { TabBar } from './components/TabBar';
 import { CodebaseActions } from './components/CodebaseActions';
 import { RunPane } from './components/RunPane';
-import { RunPanel } from './components/RunPanel';
 import { LogPanel } from './components/LogPanel';
 import { UCMTerminal } from './components/UCMTerminal';
 import { GeneralTerminal } from './components/GeneralTerminal';
@@ -77,7 +76,6 @@ function App() {
   const termsPanelCollapsed = layout.termsPanelCollapsed;
   const ucmPanelCollapsed = layout.ucmPanelCollapsed;
   const outputPanelCollapsed = layout.outputPanelCollapsed;
-  const runPanelCollapsed = layout.runPanelCollapsed ?? true;  // Default to collapsed
   const logPanelCollapsed = layout.logPanelCollapsed ?? true;  // Default to collapsed
   const terminalPanelCollapsed = layout.terminalPanelCollapsed;
 
@@ -93,9 +91,6 @@ function App() {
   }, [setLayout]);
   const setOutputPanelCollapsed = useCallback((collapsed: boolean) => {
     setLayout({ outputPanelCollapsed: collapsed });
-  }, [setLayout]);
-  const setRunPanelCollapsed = useCallback((collapsed: boolean) => {
-    setLayout({ runPanelCollapsed: collapsed });
   }, [setLayout]);
   const setLogPanelCollapsed = useCallback((collapsed: boolean) => {
     setLayout({ logPanelCollapsed: collapsed });
@@ -237,10 +232,9 @@ function App() {
       }
       workspaceInitializedRef.current = workspaceDirectory;
 
-      // Clear run history and logs when switching workspaces
+      // Clear logs when switching workspaces
       // (each workspace has its own session context)
-      const { clearTaskHistory, clearLogs } = useUnisonStore.getState();
-      clearTaskHistory();
+      const { clearLogs } = useUnisonStore.getState();
       clearLogs();
 
       setShowWelcome(false);
@@ -1009,10 +1003,10 @@ function App() {
 
   /**
    * Handle running an IO function from the editor gutter.
-   * Executes a function that has IO and Exception abilities.
+   * Opens the UCM panel and sends the run command there.
    */
   async function handleRunFunction(functionName: string) {
-    const { currentProject, currentBranch, startTask, addLog } = useUnisonStore.getState();
+    const { currentProject, currentBranch, addLog } = useUnisonStore.getState();
 
     if (!currentProject || !currentBranch) {
       addLog({
@@ -1023,30 +1017,25 @@ function App() {
       return;
     }
 
-    // Auto-expand run panel (for PTY-based IO execution)
-    setRunPanelCollapsed(false);
+    // Open the UCM panel so user can see the output
+    setUcmPanelCollapsed(false);
 
-    // Start task tracking
-    const taskId = startTask(functionName);
     addLog({
       level: 'info',
       category: 'run',
-      message: `Starting IO function: ${functionName}`,
-      details: { taskId, project: currentProject.name, branch: currentBranch.name },
+      message: `Running IO function: ${functionName}`,
+      details: { project: currentProject.name, branch: currentBranch.name },
     });
 
     try {
-      // Use PTY-based execution for all IO functions (bypasses 60s MCP timeout)
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('ucm_pty_run_task', { functionName });
-      // Output will stream via PTY events, completion handled by RunPanel
+      // Send the run command to UCM's stdin
+      const ucmLifecycle = getUCMLifecycleService();
+      await ucmLifecycle.write(`run ${functionName}\n`);
     } catch (err) {
-      const { completeTask } = useUnisonStore.getState();
-      completeTask(taskId, 'failed', err instanceof Error ? err.message : String(err));
       addLog({
         level: 'error',
         category: 'run',
-        message: `Failed to start ${functionName}`,
+        message: `Failed to run ${functionName}`,
         error: err instanceof Error ? { name: err.name, message: err.message } : undefined,
       });
     }
@@ -1472,28 +1461,6 @@ function App() {
                                   className="bottom-panel-action-btn"
                                   onClick={() => useUnisonStore.getState().clearRunOutput()}
                                   title="Clear output"
-                                >
-                                  Clear
-                                </button>
-                              ),
-                            },
-                            {
-                              id: 'run',
-                              label: 'Run',
-                              component: (
-                                <ErrorBoundary name="Run Panel">
-                                  <RunPanel isCollapsed={runPanelCollapsed} />
-                                </ErrorBoundary>
-                              ),
-                              collapsed: runPanelCollapsed,
-                              onCollapse: setRunPanelCollapsed,
-                              minWidth: 150,
-                              defaultWidth: 20,
-                              headerActions: (
-                                <button
-                                  className="bottom-panel-action-btn"
-                                  onClick={() => useUnisonStore.getState().clearTaskHistory()}
-                                  title="Clear run history"
                                 >
                                   Clear
                                 </button>
