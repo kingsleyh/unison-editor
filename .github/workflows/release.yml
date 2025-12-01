@@ -69,15 +69,34 @@ jobs:
           security create-keychain -p actions build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p actions build.keychain
-          security import certificate.p12 -k build.keychain -P $APPLE_CERTIFICATE_PASSWORD -T /usr/bin/codesign
+          # Set keychain to not auto-lock and have no timeout
+          security set-keychain-settings build.keychain
+          security import certificate.p12 -k build.keychain -P $APPLE_CERTIFICATE_PASSWORD -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          # List identities to verify import worked
+          security find-identity -v -p codesigning build.keychain
           rm certificate.p12
 
-      - name: Build and Sign (without notarization)
-        timeout-minutes: 20
+      - name: Build Tauri App (unsigned)
+        timeout-minutes: 15
+        run: npm run tauri build -- --no-bundle
+
+      - name: Bundle App
+        timeout-minutes: 10
+        run: npm run tauri build -- --bundles app
+
+      - name: Sign App Manually
+        timeout-minutes: 5
         env:
           APPLE_SIGNING_IDENTITY: "Developer ID Application: Kingsley Hendrickse (CHA3FP8ENJ)"
-        run: npm run tauri build
+        run: |
+          APP_PATH="src-tauri/target/release/bundle/macos/unison-editor.app"
+          echo "Unlocking keychain..."
+          security unlock-keychain -p actions build.keychain
+          echo "Signing app..."
+          /usr/bin/codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" --deep --timestamp "$APP_PATH"
+          echo "Verifying signature..."
+          codesign --verify --verbose "$APP_PATH"
 
       - name: Notarize App
         env:
