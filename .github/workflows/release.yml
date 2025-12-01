@@ -74,6 +74,7 @@ jobs:
           rm certificate.p12
 
       - name: Build and Sign (without notarization)
+        timeout-minutes: 20
         env:
           APPLE_SIGNING_IDENTITY: "Developer ID Application: Kingsley Hendrickse (CHA3FP8ENJ)"
         run: npm run tauri build
