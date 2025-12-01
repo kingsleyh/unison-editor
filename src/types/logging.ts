@@ -39,21 +39,6 @@ export interface LogFilter {
 }
 
 /**
- * Task execution types for the Run Panel
- */
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-
-export interface TaskExecution {
-  id: string;
-  functionName: string;
-  status: TaskStatus;
-  startTime: number;
-  endTime?: number;
-  output: string;        // Accumulated output from PTY
-  error?: string;
-}
-
-/**
  * Export format for sharing logs with support
  */
 export interface LogExport {

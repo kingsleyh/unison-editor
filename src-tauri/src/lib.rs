@@ -65,9 +65,6 @@ pub fn run() {
       commands::ucm_pty_get_context,
       commands::ucm_pty_switch_context,
       commands::ucm_pty_kill,
-      // PTY task execution (for long-running IO functions)
-      commands::ucm_pty_run_task,
-      commands::ucm_pty_cancel_task,
       // Service port management
       commands::get_service_ports,
     ])

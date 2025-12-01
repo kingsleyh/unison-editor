@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { DefinitionSummary } from '../types/syntax';
 import type { ResolvedDefinition } from '../types/navigation';
 import { DEFAULT_LAYOUT, type LayoutState } from '../services/workspaceConfigService';
-import type { LogEntry, LogFilter, TaskExecution, TaskStatus } from '../types/logging';
+import type { LogEntry, LogFilter } from '../types/logging';
 import { DEFAULT_LOG_FILTER } from '../types/logging';
 
 /**
@@ -119,10 +119,6 @@ interface UnisonState {
   logs: LogEntry[];
   logFilter: LogFilter;
 
-  // Task execution state (for Run panel)
-  currentTask: TaskExecution | null;
-  taskHistory: TaskExecution[];
-
   // Actions
   setConnection: (host: string, port: number, lspPort: number) => void;
   setConnected: (connected: boolean) => void;
@@ -180,13 +176,6 @@ interface UnisonState {
   addLog: (entry: Omit<LogEntry, 'id' | 'timestamp'>) => void;
   clearLogs: () => void;
   setLogFilter: (filter: Partial<LogFilter>) => void;
-
-  // Task execution actions
-  startTask: (functionName: string) => string;  // Returns task ID
-  appendTaskOutput: (taskId: string, output: string) => void;
-  completeTask: (taskId: string, status: TaskStatus, error?: string) => void;
-  cancelCurrentTask: () => void;
-  clearTaskHistory: () => void;
 }
 
 export const useUnisonStore = create<UnisonState>((set, get) => ({
@@ -234,10 +223,6 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   // Logging state
   logs: [],
   logFilter: { ...DEFAULT_LOG_FILTER },
-
-  // Task execution state
-  currentTask: null,
-  taskHistory: [],
 
   // Actions
   setConnection: (host, port, lspPort) =>
@@ -430,63 +415,4 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
     set((state) => ({
       logFilter: { ...state.logFilter, ...filter },
     })),
-
-  // Task execution actions
-  startTask: (functionName) => {
-    const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-    const newTask: TaskExecution = {
-      id: taskId,
-      functionName,
-      status: 'running',
-      startTime: Date.now(),
-      output: '',
-    };
-    set({ currentTask: newTask });
-    return taskId;
-  },
-
-  appendTaskOutput: (taskId, output) =>
-    set((state) => {
-      if (state.currentTask?.id !== taskId) return state;
-      return {
-        currentTask: {
-          ...state.currentTask,
-          output: state.currentTask.output + output,
-        },
-      };
-    }),
-
-  completeTask: (taskId, status, error) =>
-    set((state) => {
-      if (state.currentTask?.id !== taskId) return state;
-      const completedTask: TaskExecution = {
-        ...state.currentTask,
-        status,
-        endTime: Date.now(),
-        error,
-      };
-      // Add to history (keep last 10)
-      const taskHistory = [completedTask, ...state.taskHistory].slice(0, 10);
-      return {
-        currentTask: null,
-        taskHistory,
-      };
-    }),
-
-  cancelCurrentTask: () =>
-    set((state) => {
-      if (!state.currentTask) return state;
-      const cancelledTask: TaskExecution = {
-        ...state.currentTask,
-        status: 'cancelled',
-        endTime: Date.now(),
-      };
-      const taskHistory = [cancelledTask, ...state.taskHistory].slice(0, 10);
-      return {
-        currentTask: null,
-        taskHistory,
-      };
-    }),
-
-  clearTaskHistory: () => set({ taskHistory: [] }),
 }));
