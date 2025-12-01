@@ -4,9 +4,23 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useUnisonStore } from '../store/unisonStore';
 import { WorkspaceSetupDialog } from './WorkspaceSetupDialog';
 import { UCMConflictModal } from './UCMConflictModal';
+import { UCMNotFoundModal } from './UCMNotFoundModal';
 import { getUCMLifecycleService } from '../services/ucmLifecycle';
 import { getUCMApiClient } from '../services/ucmApi';
 import appIcon from '../assets/app-icon.png';
+
+// Helper to detect if error is related to UCM not being found
+function isUcmNotFoundError(error: string): boolean {
+  const lowerError = error.toLowerCase();
+  return (
+    lowerError.includes('failed to spawn ucm') ||
+    lowerError.includes('no such file or directory') ||
+    lowerError.includes('command not found') ||
+    lowerError.includes('program not found') ||
+    lowerError.includes('cannot find') ||
+    lowerError.includes('not found')
+  );
+}
 
 interface WelcomeScreenProps {
   onWorkspaceReady: () => void;
@@ -22,6 +36,7 @@ export function WelcomeScreen({ onWorkspaceReady }: WelcomeScreenProps) {
   const [isStartingUCM, setIsStartingUCM] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [showConflictModal, setShowConflictModal] = useState(false);
+  const [showNotFoundModal, setShowNotFoundModal] = useState(false);
   const pendingFolderRef = useRef<string | null>(null);
   const pendingActionRef = useRef<'open' | 'recent' | null>(null);
   // Track file lock errors asynchronously - set by event listener, checked by spawnUCMForFolder
@@ -105,7 +120,14 @@ export function WelcomeScreen({ onWorkspaceReady }: WelcomeScreenProps) {
     } catch (err) {
       console.error('[WelcomeScreen] Failed to start UCM:', err);
       setIsStartingUCM(false);
-      setStartupError(err instanceof Error ? err.message : String(err));
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
+      // Check if this is a "UCM not found" error
+      if (isUcmNotFoundError(errorMessage)) {
+        setShowNotFoundModal(true);
+      } else {
+        setStartupError(errorMessage);
+      }
       return false;
     }
   }, []);
@@ -161,6 +183,35 @@ export function WelcomeScreen({ onWorkspaceReady }: WelcomeScreenProps) {
       }
     }
   }, [spawnUCMForFolder, setWorkspaceDirectory, addRecentWorkspace, onWorkspaceReady]);
+
+  const handleNotFoundRetry = useCallback(async () => {
+    setShowNotFoundModal(false);
+    const folder = pendingFolderRef.current;
+    const action = pendingActionRef.current;
+
+    if (!folder || !action) {
+      return;
+    }
+
+    // Reset error state so spawn() will proceed
+    const ucmLifecycle = getUCMLifecycleService();
+    ucmLifecycle.resetError();
+
+    const success = await spawnUCMForFolder(folder, action);
+    if (success) {
+      if (action === 'open') {
+        setShowSetupDialog(true);
+      } else {
+        setWorkspaceDirectory(folder);
+        addRecentWorkspace(folder);
+        onWorkspaceReady();
+      }
+    }
+  }, [spawnUCMForFolder, setWorkspaceDirectory, addRecentWorkspace, onWorkspaceReady]);
+
+  const handleNotFoundDismiss = useCallback(() => {
+    setShowNotFoundModal(false);
+  }, []);
 
   const handleSetupComplete = useCallback(() => {
     if (selectedFolder) {
@@ -260,6 +311,12 @@ export function WelcomeScreen({ onWorkspaceReady }: WelcomeScreenProps) {
       <UCMConflictModal
         isOpen={showConflictModal}
         onRetry={handleConflictRetry}
+      />
+
+      <UCMNotFoundModal
+        isOpen={showNotFoundModal}
+        onRetry={handleNotFoundRetry}
+        onDismiss={handleNotFoundDismiss}
       />
     </div>
   );
