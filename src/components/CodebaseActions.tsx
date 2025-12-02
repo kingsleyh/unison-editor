@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useUnisonStore } from '../store/unisonStore';
 import { getDefinitionResolver } from '../services/definitionResolver';
@@ -41,12 +41,18 @@ export function CodebaseActions({ onSuccess, onTypecheckAll, onRunAllWatchExpres
   const activeTab = getActiveTab();
   const hasContent = !!activeTab?.content?.trim();
   const isUnisonFile = activeTab?.title?.endsWith('.u') || activeTab?.filePath?.endsWith('.u') || activeTab?.language === 'unison';
-  const hasWatchExpressions = activeTab?.content
-    ? detectWatchExpressions(activeTab.content).length > 0
-    : false;
-  const hasTestExpressions = activeTab?.content
-    ? detectTestExpressions(activeTab.content).length > 0
-    : false;
+
+  // Only compute watch/test expressions when autoRun is off (they're not shown otherwise)
+  // This avoids expensive regex operations on every tab switch when auto is enabled
+  const hasWatchExpressions = useMemo(() => {
+    if (autoRun || !activeTab?.content) return false;
+    return detectWatchExpressions(activeTab.content).length > 0;
+  }, [autoRun, activeTab?.content]);
+
+  const hasTestExpressions = useMemo(() => {
+    if (autoRun || !activeTab?.content) return false;
+    return detectTestExpressions(activeTab.content).length > 0;
+  }, [autoRun, activeTab?.content]);
 
   async function handleSaveToCodebase() {
     if (!activeTab?.content?.trim()) {

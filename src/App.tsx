@@ -559,16 +559,24 @@ function App() {
   // Run auto-run when autoRun is toggled on OR when tab changes while autoRun is enabled
   // Tab changes get a 1 second delay to allow large files to load
   useEffect(() => {
+    let toggleTimeout: number | null = null;
     let tabSwitchTimeout: number | null = null;
 
     const unsubscribe = useUnisonStore.subscribe(
       (state, prevState) => {
         // Check if autoRun was just turned on (false -> true)
         if (state.autoRun && !prevState.autoRun) {
-          const activeTab = state.tabs.find(t => t.id === state.activeTabId);
-          if (activeTab?.content) {
-            handleAutoRun(activeTab.content);
+          // Clear any pending toggle timeout
+          if (toggleTimeout) {
+            clearTimeout(toggleTimeout);
           }
+          // Defer auto-run to let UI update first (prevents hang feeling)
+          toggleTimeout = window.setTimeout(() => {
+            const activeTab = state.tabs.find(t => t.id === state.activeTabId);
+            if (activeTab?.content) {
+              handleAutoRun(activeTab.content);
+            }
+          }, 50);
         }
 
         // Check if tab changed while autoRun is enabled
@@ -590,6 +598,9 @@ function App() {
 
     return () => {
       unsubscribe();
+      if (toggleTimeout) {
+        clearTimeout(toggleTimeout);
+      }
       if (tabSwitchTimeout) {
         clearTimeout(tabSwitchTimeout);
       }
