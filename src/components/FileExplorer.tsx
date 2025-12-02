@@ -292,6 +292,21 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
     try {
       await fileSystemService.deleteFile(file.path);
 
+      // Close any tabs that have this file open
+      const { tabs, removeTab } = useUnisonStore.getState();
+      const tabsToClose = tabs.filter(tab => {
+        if (file.isDirectory) {
+          // For directories, close all tabs with files inside this directory
+          return tab.filePath?.startsWith(file.path + '/');
+        } else {
+          // For files, close the exact matching tab
+          return tab.filePath === file.path;
+        }
+      });
+      for (const tab of tabsToClose) {
+        removeTab(tab.id);
+      }
+
       // Reload directory
       await loadDirectory();
     } catch (err) {

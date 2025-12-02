@@ -15,6 +15,7 @@ import { UCMTerminal } from './components/UCMTerminal';
 import { GeneralTerminal } from './components/GeneralTerminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { UCMConflictModal } from './components/UCMConflictModal';
+import { FileConflictModal } from './components/FileConflictModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FileCreationModal } from './components/FileCreationModal';
 import { AlertModal } from './components/AlertModal';
@@ -109,6 +110,14 @@ function App() {
   // State for alert modal (used instead of native alert() which doesn't work in Tauri)
   const [alertModal, setAlertModal] = useState<{ title?: string; message: string } | null>(null);
 
+  // State for file conflict modal (when external changes detected on a dirty file)
+  const [fileConflict, setFileConflict] = useState<{
+    tabId: string;
+    fileName: string;
+    filePath: string;
+    newContent: string;
+  } | null>(null);
+
   const client = getUCMApiClient();
   const saveTimeoutRef = useRef<number | null>(null);
   const autoRunTimeoutRef = useRef<number | null>(null);
@@ -181,6 +190,123 @@ function App() {
       }
     };
   }, []);
+
+  // Ref to track if file watcher callback is already registered
+  const fileWatcherRegisteredRef = useRef(false);
+
+  // Initialize file watcher and handle external file changes
+  useEffect(() => {
+    // Prevent double registration in React StrictMode
+    if (fileWatcherRegisteredRef.current) {
+      return;
+    }
+    fileWatcherRegisteredRef.current = true;
+
+    let unsubscribe: (() => void) | null = null;
+
+    (async () => {
+      const { getFileWatcherService } = await import('./services/fileWatcherService');
+      const fileWatcherService = getFileWatcherService();
+
+      try {
+        await fileWatcherService.initialize();
+      } catch (error) {
+        console.error('[App] Failed to initialize file watcher:', error);
+        return;
+      }
+
+      // Subscribe to file change events
+      unsubscribe = fileWatcherService.onFileChange(async (event) => {
+        const callbackStartTime = Date.now();
+        console.log(`[FileWatcher] App callback started, delay so far: ${callbackStartTime - event.detectedAt}ms, path: ${event.path}`);
+
+        const { tabs: currentTabs, updateTab: storeUpdateTab } = useUnisonStore.getState();
+        const affectedTabs = currentTabs.filter((tab) => tab.filePath === event.path);
+
+        if (affectedTabs.length === 0) {
+          console.log(`[FileWatcher] No tabs found for path: ${event.path}`);
+          return;
+        }
+
+        // Handle file deletion
+        if (event.changeType === 'deleted') {
+          for (const tab of affectedTabs) {
+            storeUpdateTab(tab.id, {
+              filePath: undefined,
+              isDirty: true,
+              title: `${tab.title} (deleted)`,
+            });
+          }
+          return;
+        }
+
+        // Read the new content
+        try {
+          const readStartTime = Date.now();
+          const { getFileSystemService } = await import('./services/fileSystem');
+          const newContent = await getFileSystemService().readFile(event.path);
+          const readEndTime = Date.now();
+
+          for (const tab of affectedTabs) {
+            if (tab.isDirty) {
+              // File has unsaved changes - show conflict modal
+              setFileConflict({
+                tabId: tab.id,
+                fileName: tab.title,
+                filePath: event.path,
+                newContent,
+              });
+            } else {
+              // File is clean - auto-reload
+              storeUpdateTab(tab.id, { content: newContent, isDirty: false });
+              const totalTime = Date.now() - event.detectedAt;
+              console.log(`[FileWatcher] Tab updated - file read: ${readEndTime - readStartTime}ms, TOTAL: ${totalTime}ms`);
+            }
+          }
+        } catch (err) {
+          console.error('[FileWatcher] Failed to reload file:', err);
+        }
+      });
+    })();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      fileWatcherRegisteredRef.current = false;
+    };
+  }, []);
+
+  // Watch/unwatch files when tabs change
+  useEffect(() => {
+    (async () => {
+      const { getFileWatcherService } = await import('./services/fileWatcherService');
+      const fileWatcherService = getFileWatcherService();
+
+      // Get current file paths from tabs
+      const currentFilePaths = new Set(
+        tabs.filter((t) => t.filePath).map((t) => t.filePath!)
+      );
+
+      // Watch new files
+      for (const path of currentFilePaths) {
+        if (!fileWatcherService.isWatching(path)) {
+          fileWatcherService.watchFile(path).catch((err) => {
+            console.error('[App] Failed to watch file:', path, err);
+          });
+        }
+      }
+
+      // Unwatch closed files
+      for (const path of fileWatcherService.getWatchedFiles()) {
+        if (!currentFilePaths.has(path)) {
+          fileWatcherService.unwatchFile(path).catch((err) => {
+            console.error('[App] Failed to unwatch file:', path, err);
+          });
+        }
+      }
+    })();
+  }, [tabs]);
 
   // Track window size/position changes and save to layout
   useEffect(() => {
@@ -1127,6 +1253,7 @@ function App() {
       if (tab?.filePath && tab.isDirty) {
         try {
           storeUpdateTab(tabId, { saveStatus: 'saving' });
+
           const { getFileSystemService } = await import('./services/fileSystem');
           const fileSystemService = getFileSystemService();
           await fileSystemService.writeFile(tab.filePath, tab.content);
@@ -1237,6 +1364,13 @@ function App() {
           isDirty,
         });
 
+        // Mark file as being edited to suppress file watcher events
+        if (activeTab.filePath) {
+          import('./services/fileWatcherService').then(({ getFileWatcherService }) => {
+            getFileWatcherService().markFileEditing(activeTab.filePath!);
+          });
+        }
+
         // Clear existing save timeout
         if (saveTimeoutRef.current) {
           clearTimeout(saveTimeoutRef.current);
@@ -1345,6 +1479,18 @@ function App() {
       }
     }
   }, [workspaceDirectory, setConnected]);
+
+  // Handle file conflict - reload from disk
+  const handleFileConflictReload = useCallback(() => {
+    if (!fileConflict) return;
+    updateTab(fileConflict.tabId, { content: fileConflict.newContent, isDirty: false });
+    setFileConflict(null);
+  }, [fileConflict, updateTab]);
+
+  // Handle file conflict - keep local changes
+  const handleFileConflictKeepLocal = useCallback(() => {
+    setFileConflict(null);
+  }, []);
 
   // Show welcome screen when no workspace is selected
   if (showWelcome) {
@@ -1541,6 +1687,14 @@ function App() {
       <UCMConflictModal
         isOpen={showConflictModal}
         onRetry={handleConflictRetry}
+      />
+
+      <FileConflictModal
+        isOpen={fileConflict !== null}
+        fileName={fileConflict?.fileName || ''}
+        filePath={fileConflict?.filePath || ''}
+        onReload={handleFileConflictReload}
+        onKeepLocal={handleFileConflictKeepLocal}
       />
 
       <FileCreationModal

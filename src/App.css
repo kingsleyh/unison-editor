@@ -744,6 +744,32 @@ body {
   color: #ffffff;
 }
 
+/* File Conflict Modal */
+.file-conflict-modal {
+  max-width: 450px;
+}
+
+.file-conflict-modal .modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-conflict-icon {
+  flex-shrink: 0;
+}
+
+.file-conflict-path {
+  font-family: monospace;
+  font-size: 12px;
+  color: #888;
+  word-break: break-all;
+  background: #1e1e1e;
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
 /* UCM Conflict Modal */
 .ucm-conflict-overlay {
   position: fixed;

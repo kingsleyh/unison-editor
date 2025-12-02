@@ -1,3 +1,4 @@
+use crate::file_watcher::FileWatcherManager;
 use crate::lsp_proxy::LspProxy;
 use crate::mcp_client::{MCPClient, RunFunctionResult, RunTestsResult, TypecheckResult, UpdateResult};
 use crate::port_utils::find_available_port;
@@ -22,6 +23,8 @@ pub struct AppState {
     pub lsp_port: Mutex<u16>,
     /// WebSocket proxy port for LSP (dynamically allocated, default 5758)
     pub lsp_proxy_port: Mutex<u16>,
+    /// File watcher for detecting external file changes
+    pub file_watcher: FileWatcherManager,
 }
 
 impl Default for AppState {
@@ -34,6 +37,7 @@ impl Default for AppState {
             api_port: Mutex::new(5858),
             lsp_port: Mutex::new(5757),
             lsp_proxy_port: Mutex::new(5758),
+            file_watcher: FileWatcherManager::new(),
         }
     }
 }
@@ -909,4 +913,33 @@ pub fn get_service_ports(
         lsp_port: *state.lsp_port.lock().unwrap(),
         lsp_proxy_port: *state.lsp_proxy_port.lock().unwrap(),
     }
+}
+
+// File Watcher Commands - For detecting external file changes
+
+/// Initialize the file watcher with the app handle for event emission
+#[tauri::command]
+pub fn init_file_watcher(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.file_watcher.initialize(app_handle)
+}
+
+/// Start watching a file for external changes
+#[tauri::command]
+pub fn watch_file(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.file_watcher.watch_file(&path)
+}
+
+/// Stop watching a file
+#[tauri::command]
+pub fn unwatch_file(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.file_watcher.unwatch_file(&path)
 }

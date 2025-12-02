@@ -1,4 +1,5 @@
 mod commands;
+mod file_watcher;
 mod mcp_client;
 mod port_utils;
 mod ucm_api;
@@ -67,6 +68,10 @@ pub fn run() {
       commands::ucm_pty_kill,
       // Service port management
       commands::get_service_ports,
+      // File watcher commands
+      commands::init_file_watcher,
+      commands::watch_file,
+      commands::unwatch_file,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
