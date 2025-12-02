@@ -11,6 +11,8 @@ interface DefinitionStackProps {
   onAddToScratch: (source: string, name: string) => void;
   /** Called when a definition is loaded/selected (to reveal in tree) */
   onRevealInTree?: (fqn: string, type: 'term' | 'type') => void;
+  /** Called when the panel close button is clicked */
+  onClose?: () => void;
 }
 
 /**
@@ -24,6 +26,7 @@ export function DefinitionStack({
   selectedDefinition,
   onAddToScratch,
   onRevealInTree,
+  onClose,
 }: DefinitionStackProps) {
   const {
     currentProject,
@@ -36,6 +39,7 @@ export function DefinitionStack({
     removeDefinitionCard,
     setSelectedCardId,
     getDefinitionCards,
+    clearDefinitionCards,
   } = useUnisonStore();
 
   const client = getUCMApiClient();
@@ -327,9 +331,25 @@ export function DefinitionStack({
     }
   }
 
+  const handleCloseAll = () => {
+    clearDefinitionCards();
+  };
+
   if (cards.length === 0) {
     return (
       <div className="definition-stack empty">
+        <div className="definition-stack-header">
+          <span className="definition-stack-title">Terms</span>
+          {onClose && (
+            <button
+              className="definition-stack-header-btn close-panel-btn"
+              onClick={onClose}
+              title="Close panel"
+            >
+              ×
+            </button>
+          )}
+        </div>
         <div className="empty-state">
           <p>No definitions selected</p>
           <p className="hint">Click an item in the navigation tree to view it here</p>
@@ -340,6 +360,27 @@ export function DefinitionStack({
 
   return (
     <div className="definition-stack">
+      <div className="definition-stack-header">
+        <span className="definition-stack-title">Terms</span>
+        <div className="definition-stack-header-actions">
+          <button
+            className="definition-stack-header-btn"
+            onClick={handleCloseAll}
+            title="Close all"
+          >
+            Close All
+          </button>
+          {onClose && (
+            <button
+              className="definition-stack-header-btn close-panel-btn"
+              onClick={onClose}
+              title="Close panel"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
       <div className="definition-stack-scroll">
         {cards.map((card) => {
           const isSelected = card.id === selectedCardId;

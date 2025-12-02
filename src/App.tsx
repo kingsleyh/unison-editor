@@ -1376,24 +1376,22 @@ function App() {
           clearTimeout(saveTimeoutRef.current);
         }
 
-        // Debounced auto-save (only if file has a path and is dirty)
-        if (activeTab.filePath && isDirty) {
-          saveTimeoutRef.current = window.setTimeout(async () => {
-            await saveCurrentFile();
-          }, 500); // 500ms debounce
-        }
-
-        // Clear existing auto-run timeout
+        // Clear existing auto-run timeout (will be triggered after save completes)
         if (autoRunTimeoutRef.current) {
           clearTimeout(autoRunTimeoutRef.current);
         }
 
-        // Debounced auto-run (1 second after typing stops)
-        const { autoRun } = useUnisonStore.getState();
-        if (autoRun && isDirty) {
-          autoRunTimeoutRef.current = window.setTimeout(async () => {
-            await handleAutoRun(value);
-          }, 1000);
+        // Debounced auto-save (only if file has a path and is dirty)
+        // Auto-run is triggered after save completes (not on a separate timer)
+        if (activeTab.filePath && isDirty) {
+          saveTimeoutRef.current = window.setTimeout(async () => {
+            await saveCurrentFile();
+            // Trigger auto-run after save completes
+            const { autoRun } = useUnisonStore.getState();
+            if (autoRun) {
+              await handleAutoRun(value);
+            }
+          }, 1500); // 1.5 second debounce
         }
       }
     }
@@ -1546,6 +1544,7 @@ function App() {
                       selectedDefinition={selectedDefinition}
                       onAddToScratch={handleAddToScratch}
                       onRevealInTree={handleRevealInTree}
+                      onClose={() => setTermsPanelCollapsed(true)}
                     />
                   </ErrorBoundary>
                 }

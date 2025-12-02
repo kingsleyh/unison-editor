@@ -165,6 +165,7 @@ interface UnisonState {
   addDefinitionCard: (card: DefinitionCardState) => void;
   updateDefinitionCard: (cardId: string, updates: Partial<DefinitionCardState>) => void;
   removeDefinitionCard: (cardId: string) => void;
+  clearDefinitionCards: () => void;
   setSelectedCardId: (cardId: string | null) => void;
   getDefinitionCards: () => DefinitionCardState[];
 
@@ -383,6 +384,9 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
     set((state) => ({
       definitionCards: state.definitionCards.filter((card) => card.id !== cardId),
     })),
+
+  clearDefinitionCards: () =>
+    set({ definitionCards: [], selectedCardId: null }),
 
   setSelectedCardId: (cardId) => set({ selectedCardId: cardId }),
 
