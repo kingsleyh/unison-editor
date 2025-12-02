@@ -9,7 +9,7 @@
 
 use crate::port_utils::find_available_port;
 use parking_lot::Mutex;
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::sync::Arc;
@@ -34,6 +34,8 @@ pub struct UCMPorts {
 pub struct UCMPtyManager {
     /// Writer to send input to PTY
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    /// Master PTY handle for resize operations
+    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     /// Current detected context
     current_context: Arc<Mutex<UCMContext>>,
     /// Flag to signal reader thread to stop
@@ -169,15 +171,16 @@ impl UCMPtyManager {
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn UCM: {}", e))?;
 
+        // Get the master PTY - we need to keep this for resize operations
+        let master = pair.master;
+
         // Get writer for sending input
-        let writer = pair
-            .master
+        let writer = master
             .take_writer()
             .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
 
         // Get reader for receiving output
-        let mut reader = pair
-            .master
+        let mut reader = master
             .try_clone_reader()
             .map_err(|e| format!("Failed to get PTY reader: {}", e))?;
 
@@ -264,6 +267,7 @@ impl UCMPtyManager {
 
         let manager = Self {
             writer: Arc::new(Mutex::new(writer)),
+            master: Arc::new(Mutex::new(master)),
             current_context,
             running,
             ports: ports.clone(),
@@ -302,11 +306,16 @@ impl UCMPtyManager {
     }
 
     /// Resize the PTY (called when terminal is resized)
-    pub fn resize(&self, _rows: u16, _cols: u16) -> Result<(), String> {
-        // Note: portable-pty doesn't have a direct resize method on the writer
-        // The resize would need to be done on the master PTY which we don't store
-        // For now, this is a no-op but we can enhance later
-        Ok(())
+    pub fn resize(&self, rows: u16, cols: u16) -> Result<(), String> {
+        let master = self.master.lock();
+        master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("Failed to resize PTY: {}", e))
     }
 
     /// Stop the PTY manager

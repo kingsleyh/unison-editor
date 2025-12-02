@@ -13,6 +13,9 @@ export type { DefinitionSummary, SourceSegment };
  * Provides: hover, completion, go-to-definition with full codebase context.
  */
 
+// Track registered languages to prevent duplicate provider registration
+const registeredLanguages = new Set<string>();
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -769,6 +772,13 @@ export function registerUCMProviders(
   monacoInstance: typeof monaco,
   languageId: string = 'unison'
 ): void {
+  // Prevent duplicate registration (can happen with React StrictMode or re-renders)
+  if (registeredLanguages.has(languageId)) {
+    console.log('UCM providers already registered for', languageId, '- skipping');
+    return;
+  }
+  registeredLanguages.add(languageId);
+
   // Register providers
   monacoInstance.languages.registerHoverProvider(
     languageId,
