@@ -12,9 +12,11 @@ interface FileExplorerProps {
   onFileClick: (path: string, name: string) => void;
   showOnlyUnison?: boolean;
   refreshTrigger?: number; // Used to trigger refresh when files are created/deleted
+  /** Path of the currently focused file (from active tab) - will be highlighted and auto-expanded */
+  focusedFilePath?: string | null;
 }
 
-export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigger }: FileExplorerProps) {
+export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigger, focusedFilePath }: FileExplorerProps) {
   const [files, setFiles] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
 
   // Modal states
   const [renameModal, setRenameModal] = useState<FileNode | null>(null);
-  const [deleteModal, setDeleteModal] = useState<FileNode | null>(null);
+  const [deleteModal, setDeleteModal] = useState<FileNode[] | null>(null);
   const [folderModal, setFolderModal] = useState<{ parentPath: string } | null>(null);
   const [fileModal, setFileModal] = useState<{ parentPath: string } | null>(null);
 
@@ -62,7 +64,51 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
     }
   }, [workspaceDirectory, refreshTrigger]);
 
+  // Auto-expand parent directories when focused file changes
+  useEffect(() => {
+    if (!focusedFilePath || !workspaceDirectory) return;
+
+    // Clear selection when tab changes (focused file changes from outside file explorer)
+    setSelectedPaths(new Set());
+    setLastSelectedPath(null);
+
+    // Get all parent directories of the focused file
+    const getParentDirs = (filePath: string): string[] => {
+      const dirs: string[] = [];
+      let current = filePath;
+      while (current !== workspaceDirectory && current.includes('/')) {
+        const parent = current.substring(0, current.lastIndexOf('/'));
+        if (parent && parent.startsWith(workspaceDirectory)) {
+          dirs.push(parent);
+        }
+        current = parent;
+      }
+      return dirs;
+    };
+
+    const parentDirs = getParentDirs(focusedFilePath);
+    if (parentDirs.length === 0) return;
+
+    // Check if any parent dirs need to be expanded
+    const dirsToExpand = parentDirs.filter(dir => !expandedDirs.has(dir));
+    if (dirsToExpand.length === 0) return;
+
+    // Create the new expanded set including the parent dirs
+    const newExpandedDirs = new Set(expandedDirs);
+    for (const dir of dirsToExpand) {
+      newExpandedDirs.add(dir);
+    }
+
+    // Update state and reload with the new expanded dirs
+    setExpandedDirs(newExpandedDirs);
+    loadDirectoryWithExpandedDirs(newExpandedDirs);
+  }, [focusedFilePath, workspaceDirectory]);
+
   async function loadDirectory() {
+    await loadDirectoryWithExpandedDirs(expandedDirs);
+  }
+
+  async function loadDirectoryWithExpandedDirs(dirsToExpand: Set<string>) {
     if (!workspaceDirectory) return;
 
     setLoading(true);
@@ -76,7 +122,7 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
       }
 
       // Reload children for any expanded directories
-      files = await reloadExpandedChildren(files);
+      files = await reloadExpandedChildren(files, dirsToExpand);
 
       setFiles(files);
     } catch (err) {
@@ -88,11 +134,11 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
   }
 
   // Recursively reload children for expanded directories
-  async function reloadExpandedChildren(nodes: FileNode[]): Promise<FileNode[]> {
+  async function reloadExpandedChildren(nodes: FileNode[], dirsToExpand: Set<string>): Promise<FileNode[]> {
     const result: FileNode[] = [];
 
     for (const node of nodes) {
-      if (node.isDirectory && expandedDirs.has(node.path)) {
+      if (node.isDirectory && dirsToExpand.has(node.path)) {
         // This directory is expanded, load its children
         try {
           let children = await fileSystemService.listDirectory(node.path, false);
@@ -100,7 +146,7 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
             children = fileSystemService.filterUnisonFiles(children);
           }
           // Recursively load children of expanded subdirectories
-          children = await reloadExpandedChildren(children);
+          children = await reloadExpandedChildren(children, dirsToExpand);
           result.push({ ...node, children });
         } catch {
           // If we can't load children, just include the node without them
@@ -179,6 +225,28 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
     return result;
   }
 
+  // Get FileNode objects for selected paths
+  function getSelectedFileNodes(file: FileNode): FileNode[] {
+    // If the right-clicked file is in the selection, return all selected
+    // Otherwise, just return the right-clicked file
+    if (selectedPaths.has(file.path) && selectedPaths.size > 1) {
+      const findNodes = (nodes: FileNode[], paths: Set<string>): FileNode[] => {
+        const result: FileNode[] = [];
+        for (const node of nodes) {
+          if (paths.has(node.path)) {
+            result.push(node);
+          }
+          if (node.children) {
+            result.push(...findNodes(node.children, paths));
+          }
+        }
+        return result;
+      };
+      return findNodes(files, selectedPaths);
+    }
+    return [file];
+  }
+
   // Handle selection with keyboard modifiers
   function handleSelect(file: FileNode, e: React.MouseEvent) {
     if (e.shiftKey && lastSelectedPath) {
@@ -244,8 +312,11 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
 
   function getContextMenuItems(file: FileNode): ContextMenuItem[] {
     const items: ContextMenuItem[] = [];
+    const selection = getSelectedFileNodes(file);
+    const isMultiSelect = selection.length > 1;
 
-    if (file.isDirectory) {
+    // Only show folder actions for single directory selection
+    if (file.isDirectory && !isMultiSelect) {
       items.push({
         label: 'New Folder',
         icon: '📁',
@@ -259,15 +330,20 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
       items.push({ label: '', onClick: () => {}, divider: true });
     }
 
+    // Rename only for single selection
+    if (!isMultiSelect) {
+      items.push({
+        label: 'Rename',
+        icon: '✏️',
+        onClick: () => setRenameModal(file),
+      });
+    }
+
+    // Delete supports multi-select
     items.push({
-      label: 'Rename',
-      icon: '✏️',
-      onClick: () => setRenameModal(file),
-    });
-    items.push({
-      label: 'Delete',
+      label: `Delete${isMultiSelect ? ` (${selection.length})` : ''}`,
       icon: '🗑️',
-      onClick: () => setDeleteModal(file),
+      onClick: () => setDeleteModal(selection),
     });
 
     return items;
@@ -288,24 +364,31 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
     }
   }
 
-  async function handleDelete(file: FileNode) {
+  async function handleDelete(filesToDelete: FileNode[]) {
     try {
-      await fileSystemService.deleteFile(file.path);
-
-      // Close any tabs that have this file open
       const { tabs, removeTab } = useUnisonStore.getState();
-      const tabsToClose = tabs.filter(tab => {
-        if (file.isDirectory) {
-          // For directories, close all tabs with files inside this directory
-          return tab.filePath?.startsWith(file.path + '/');
-        } else {
-          // For files, close the exact matching tab
-          return tab.filePath === file.path;
+
+      for (const file of filesToDelete) {
+        await fileSystemService.deleteFile(file.path);
+
+        // Close any tabs that have this file open
+        const tabsToClose = tabs.filter(tab => {
+          if (file.isDirectory) {
+            // For directories, close all tabs with files inside this directory
+            return tab.filePath?.startsWith(file.path + '/');
+          } else {
+            // For files, close the exact matching tab
+            return tab.filePath === file.path;
+          }
+        });
+        for (const tab of tabsToClose) {
+          removeTab(tab.id);
         }
-      });
-      for (const tab of tabsToClose) {
-        removeTab(tab.id);
       }
+
+      // Clear selection after delete
+      setSelectedPaths(new Set());
+      setLastSelectedPath(null);
 
       // Reload directory
       await loadDirectory();
@@ -582,6 +665,7 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
     const isExpanded = expandedDirs.has(file.path);
     const hasChildren = file.children && file.children.length > 0;
     const isSelected = selectedPaths.has(file.path);
+    const isFocused = focusedFilePath === file.path;
     const isBeingDragged = draggedPathsRef.current.includes(file.path);
     const isDropTargetItem = dropTarget?.path === file.path;
     const isValidDrop = isDropTargetItem && dropTarget?.isValid;
@@ -602,6 +686,7 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
     const classNames = [
       'file-explorer-item',
       isSelected ? 'selected' : '',
+      isFocused ? 'focused' : '',
       isBeingDragged ? 'dragging' : '',
       isValidDrop ? 'drop-target-valid' : '',
       isInvalidDrop ? 'drop-target-invalid' : '',
@@ -748,13 +833,12 @@ export function FileExplorer({ onFileClick, showOnlyUnison = false, refreshTrigg
         />
       )}
 
-      {deleteModal && (
+      {deleteModal && deleteModal.length > 0 && (
         <DeleteConfirmModal
           isOpen={true}
           onClose={() => setDeleteModal(null)}
           onConfirm={() => handleDelete(deleteModal)}
-          itemName={deleteModal.name}
-          itemType={deleteModal.isDirectory ? 'directory' : 'file'}
+          items={deleteModal.map(f => ({ name: f.name, isDirectory: f.isDirectory }))}
         />
       )}
 

@@ -18,6 +18,8 @@ interface NavigationProps {
   revealInTree?: string | null;
   /** Callback to add content to scratch file */
   onAddToScratch?: (content: string) => void;
+  /** Path of the currently focused file (from active tab) */
+  focusedFilePath?: string | null;
   /** Controlled workspace expanded state */
   workspaceExpanded?: boolean;
   /** Controlled file explorer expanded state */
@@ -78,6 +80,7 @@ export function Navigation({
   onDefinitionClick,
   revealInTree,
   onAddToScratch,
+  focusedFilePath,
   workspaceExpanded,
   fileExplorerExpanded,
   ucmExplorerExpanded,
@@ -359,6 +362,7 @@ export function Navigation({
         onFileClick={onFileClick}
         showOnlyUnison={showOnlyUnison}
         refreshTrigger={refreshTrigger}
+        focusedFilePath={focusedFilePath}
       />
     </div>
   );

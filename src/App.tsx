@@ -1517,6 +1517,7 @@ function App() {
                   onDefinitionClick={handleOpenDefinition}
                   revealInTree={revealInTree}
                   onAddToScratch={handleAddToScratchFromNav}
+                  focusedFilePath={activeTab?.filePath}
                   workspaceExpanded={layout.workspaceExpanded}
                   fileExplorerExpanded={layout.fileExplorerExpanded}
                   ucmExplorerExpanded={layout.ucmExplorerExpanded}

@@ -326,6 +326,22 @@ body {
   background-color: #0a5485;
 }
 
+/* Focused file (currently open in editor) */
+.file-explorer-item.focused {
+  background-color: #37373d;
+  box-shadow: inset 2px 0 0 #0078d4;
+}
+
+.file-explorer-item.focused:hover {
+  background-color: #3e3e44;
+}
+
+/* When both selected and focused */
+.file-explorer-item.selected.focused {
+  background-color: #094771;
+  box-shadow: inset 2px 0 0 #0078d4;
+}
+
 /* Dragging items */
 .file-explorer-item.dragging {
   opacity: 0.5;
@@ -605,6 +621,27 @@ body {
 
 .modal-body {
   padding: 20px;
+}
+
+.delete-items-list {
+  margin: 12px 0;
+  padding: 8px 12px;
+  background-color: #2d2d30;
+  border-radius: 4px;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.delete-items-list li {
+  padding: 4px 0;
+  font-size: 13px;
+  color: #cccccc;
+}
+
+.delete-items-list li:last-child {
+  color: #858585;
+  font-style: italic;
 }
 
 .modal-info {
@@ -967,7 +1004,7 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .namespace-browser.empty {
@@ -984,6 +1021,11 @@ body {
   gap: 6px;
   padding: 8px;
   border-bottom: 1px solid #3e3e42;
+  background-color: #252526;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex-shrink: 0;
 }
 
 .search-box input {
@@ -1025,10 +1067,15 @@ body {
 }
 
 .namespace-items {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
   padding: 4px;
+  padding-bottom: 60px; /* Extra space at bottom for drop-to-root target */
+  transition: background-color 0.15s;
+}
+
+.namespace-items.drop-target-root {
+  background-color: rgba(0, 122, 204, 0.15);
+  outline: 2px dashed #007acc;
+  outline-offset: -2px;
 }
 
 .namespace-item {
@@ -3929,8 +3976,10 @@ body {
 
 .collapsible-panel-content {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .collapsible-panel-divider {

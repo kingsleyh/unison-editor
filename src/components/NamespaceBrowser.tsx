@@ -97,6 +97,15 @@ export function NamespaceBrowser({
   } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Auto-expand on drag hover
+  const autoExpandTimeoutRef = useRef<number | null>(null);
+  const autoExpandPathRef = useRef<string | null>(null);
+  const toggleNodeRef = useRef<((nodePath: number[]) => Promise<void>) | null>(null);
+
+  // Auto-scroll during drag
+  const containerRef = useRef<HTMLDivElement>(null);
+  const autoScrollIntervalRef = useRef<number | null>(null);
+
   const { refreshNamespace } = useUnisonStore();
   const client = getUCMApiClient();
 
@@ -270,6 +279,28 @@ export function NamespaceBrowser({
       });
     }
 
+    // Move to Root - for items that are nested (have a . in their path)
+    const nestedItems = selection.filter(n => n.fullPath.includes('.'));
+    if (nestedItems.length > 0) {
+      items.push({
+        label: `Move to Root${nestedItems.length > 1 ? ` (${nestedItems.length})` : ''}`,
+        icon: '📦',
+        onClick: async () => {
+          try {
+            for (const node of nestedItems) {
+              const newFQN = node.name;
+              await moveItem(node.fullPath, newFQN, node.type);
+            }
+            setTimeout(() => {
+              refreshNamespace();
+            }, 500);
+          } catch (err) {
+            console.error('Failed to move items to root:', err);
+          }
+        },
+      });
+    }
+
     // Delete - for any selection
     if (onDelete && selection.length > 0) {
       items.push({
@@ -280,7 +311,7 @@ export function NamespaceBrowser({
     }
 
     return items;
-  }, [getSelectedTreeNodes, onOpenDefinition, onAddToScratch, onRename, onDelete]);
+  }, [getSelectedTreeNodes, onOpenDefinition, onAddToScratch, onRename, onDelete, refreshNamespace]);
 
   /**
    * Handle drag start - store dragged nodes
@@ -304,16 +335,68 @@ export function NamespaceBrowser({
   }, [selectedNodes, getSelectedTreeNodes]);
 
   /**
-   * Handle drag over - show drop target indicator
+   * Clear auto-expand timeout
    */
-  const handleDragOver = useCallback((e: React.DragEvent, node: TreeNode) => {
+  const clearAutoExpandTimeout = useCallback(() => {
+    if (autoExpandTimeoutRef.current) {
+      clearTimeout(autoExpandTimeoutRef.current);
+      autoExpandTimeoutRef.current = null;
+    }
+    autoExpandPathRef.current = null;
+  }, []);
+
+  /**
+   * Clear auto-scroll interval
+   */
+  const clearAutoScroll = useCallback(() => {
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Start auto-scrolling when dragging near edges
+   */
+  const startAutoScroll = useCallback((clientY: number) => {
+    clearAutoScroll();
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const scrollZone = 50; // pixels from edge to trigger scroll
+    const scrollSpeed = 8; // pixels per frame
+
+    autoScrollIntervalRef.current = window.setInterval(() => {
+      const topDistance = clientY - rect.top;
+      const bottomDistance = rect.bottom - clientY;
+
+      if (topDistance < scrollZone && topDistance > 0) {
+        // Scroll up
+        container.scrollTop -= scrollSpeed;
+      } else if (bottomDistance < scrollZone && bottomDistance > 0) {
+        // Scroll down
+        container.scrollTop += scrollSpeed;
+      }
+    }, 16); // ~60fps
+  }, [clearAutoScroll]);
+
+  /**
+   * Handle drag over - show drop target indicator and auto-expand collapsed namespaces
+   */
+  const handleDragOver = useCallback((e: React.DragEvent, node: TreeNode, nodePath: number[]) => {
     e.preventDefault();
-    e.stopPropagation();
+    // Don't stopPropagation - let container handle root drops
+
+    // Auto-scroll when near edges
+    startAutoScroll(e.clientY);
 
     // Can only drop into namespaces
     if (node.type !== 'namespace') {
       e.dataTransfer.dropEffect = 'none';
       setDropTarget({ path: node.fullPath, position: 'inside', isValid: false });
+      clearAutoExpandTimeout();
       return;
     }
 
@@ -327,15 +410,33 @@ export function NamespaceBrowser({
     if (isInvalidDrop) {
       e.dataTransfer.dropEffect = 'none';
       setDropTarget({ path: node.fullPath, position: 'inside', isValid: false });
+      clearAutoExpandTimeout();
       return;
     }
 
     e.dataTransfer.dropEffect = 'move';
     setDropTarget({ path: node.fullPath, position: 'inside', isValid: true });
-  }, []);
+
+    // Auto-expand collapsed namespaces after 500ms hover
+    if (node.type === 'namespace' && !node.isExpanded) {
+      // Only start timer if we're hovering over a new node
+      if (autoExpandPathRef.current !== node.fullPath) {
+        clearAutoExpandTimeout();
+        autoExpandPathRef.current = node.fullPath;
+        autoExpandTimeoutRef.current = window.setTimeout(() => {
+          if (toggleNodeRef.current) {
+            toggleNodeRef.current(nodePath);
+          }
+          autoExpandPathRef.current = null;
+        }, 500);
+      }
+    } else {
+      clearAutoExpandTimeout();
+    }
+  }, [clearAutoExpandTimeout, startAutoScroll]);
 
   /**
-   * Handle drag leave - clear drop target
+   * Handle drag leave - clear drop target and auto-expand timeout
    */
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -343,8 +444,9 @@ export function NamespaceBrowser({
     const relatedTarget = e.relatedTarget as HTMLElement;
     if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
       setDropTarget(null);
+      clearAutoExpandTimeout();
     }
-  }, []);
+  }, [clearAutoExpandTimeout]);
 
   /**
    * Handle drop - move items to target namespace
@@ -355,6 +457,7 @@ export function NamespaceBrowser({
 
     setDropTarget(null);
     setIsDragging(false);
+    clearAutoScroll();
 
     // Can only drop into namespaces
     if (targetNode.type !== 'namespace') return;
@@ -386,7 +489,7 @@ export function NamespaceBrowser({
     }
 
     draggedNodesRef.current = [];
-  }, [refreshNamespace]);
+  }, [refreshNamespace, clearAutoScroll]);
 
   /**
    * Handle drag end - cleanup
@@ -395,30 +498,58 @@ export function NamespaceBrowser({
     setDropTarget(null);
     setIsDragging(false);
     draggedNodesRef.current = [];
+    clearAutoExpandTimeout();
+    clearAutoScroll();
+  }, [clearAutoExpandTimeout, clearAutoScroll]);
+
+  /**
+   * Handle drag over the container (for dropping to root)
+   */
+  const handleContainerDragOver = useCallback((e: React.DragEvent) => {
+    // Only handle if the target is the container itself (not a child element)
+    if (e.target !== e.currentTarget) return;
+
+    // Only handle if we have items being dragged
+    const nodesToMove = draggedNodesRef.current;
+    if (nodesToMove.length === 0) return;
+
+    // Check if any item can be moved to root (not already at root level)
+    const canMoveToRoot = nodesToMove.some(node => node.fullPath.includes('.'));
+    if (!canMoveToRoot) return;
+
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget({ path: '__root__', position: 'inside', isValid: true });
   }, []);
 
   /**
-   * Handle drop on root (move to top-level namespace)
-   * Note: Currently unused but kept for future drag-to-root functionality
+   * Handle drop on the container (move to root)
    */
-  const _handleDropOnRoot = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleContainerDrop = useCallback(async (e: React.DragEvent) => {
+    // Only handle if the target is the container itself (not a child element)
+    if (e.target !== e.currentTarget) return;
 
+    e.preventDefault();
     setDropTarget(null);
     setIsDragging(false);
+    clearAutoScroll();
 
     const nodesToMove = draggedNodesRef.current;
     if (nodesToMove.length === 0) return;
 
-    // Move each item to root namespace
+    // Filter out items already at root level
+    const itemsToMove = nodesToMove.filter(node => node.fullPath.includes('.'));
+    if (itemsToMove.length === 0) {
+      draggedNodesRef.current = [];
+      return;
+    }
+
+    // Move each item to root
     try {
-      for (const node of nodesToMove) {
-        // Moving to root means just using the name (no namespace prefix)
+      for (const node of itemsToMove) {
         const newFQN = node.name;
         await moveItem(node.fullPath, newFQN, node.type);
       }
-      // Wait for UCM to process the commands before refreshing
       setTimeout(() => {
         refreshNamespace();
       }, 500);
@@ -427,8 +558,7 @@ export function NamespaceBrowser({
     }
 
     draggedNodesRef.current = [];
-  }, [refreshNamespace]);
-  void _handleDropOnRoot; // Reserved for future use
+  }, [refreshNamespace, clearAutoScroll]);
 
   // Load root namespace when project/branch changes or when refreshNamespace is triggered
   useEffect(() => {
@@ -611,8 +741,54 @@ export function NamespaceBrowser({
     return null;
   }
 
+  // Collect all expanded paths from the current tree
+  function getExpandedPaths(nodes: TreeNode[]): Set<string> {
+    const expanded = new Set<string>();
+    function collect(nodeList: TreeNode[]) {
+      for (const node of nodeList) {
+        if (node.isExpanded) {
+          expanded.add(node.fullPath);
+          if (node.children) {
+            collect(node.children);
+          }
+        }
+      }
+    }
+    collect(nodes);
+    return expanded;
+  }
+
+  // Restore expansion state and reload children for expanded nodes
+  async function restoreExpansionState(nodes: TreeNode[], expandedPaths: Set<string>): Promise<TreeNode[]> {
+    const result: TreeNode[] = [];
+    for (const node of nodes) {
+      if (node.type === 'namespace' && expandedPaths.has(node.fullPath)) {
+        // This node was expanded, reload its children
+        try {
+          const children = await loadChildren(node);
+          const restoredChildren = await restoreExpansionState(children, expandedPaths);
+          result.push({
+            ...node,
+            isExpanded: true,
+            isLoaded: true,
+            children: restoredChildren,
+          });
+        } catch {
+          // If loading fails, just add the node without expansion
+          result.push(node);
+        }
+      } else {
+        result.push(node);
+      }
+    }
+    return result;
+  }
+
   async function loadRootNamespace() {
     if (!currentProject || !currentBranch) return;
+
+    // Save current expansion state before reloading
+    const expandedPaths = getExpandedPaths(rootNodes);
 
     setLoading(true);
     setError(null);
@@ -623,7 +799,7 @@ export function NamespaceBrowser({
         '.'
       );
 
-      const nodes: TreeNode[] = items.map((item) => ({
+      let nodes: TreeNode[] = items.map((item) => ({
         name: item.name,
         fullPath: item.name,
         type: item.type,
@@ -632,6 +808,11 @@ export function NamespaceBrowser({
         isLoaded: item.type !== 'namespace',
         children: item.type === 'namespace' ? [] : undefined,
       }));
+
+      // Restore expansion state if we had any expanded nodes
+      if (expandedPaths.size > 0) {
+        nodes = await restoreExpansionState(nodes, expandedPaths);
+      }
 
       setRootNodes(nodes);
     } catch (err) {
@@ -701,6 +882,9 @@ export function NamespaceBrowser({
 
     setRootNodes(newRootNodes);
   }
+
+  // Keep the ref updated so drag handlers can call toggleNode
+  toggleNodeRef.current = toggleNode;
 
   async function performSearch() {
     if (!currentProject || !currentBranch || !searchQuery.trim()) {
@@ -780,7 +964,7 @@ export function NamespaceBrowser({
           onContextMenu={(e) => handleContextMenu(e, node)}
           draggable
           onDragStart={(e) => handleDragStart(e, node)}
-          onDragOver={(e) => handleDragOver(e, node)}
+          onDragOver={(e) => handleDragOver(e, node, nodePath)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, node)}
           onDragEnd={handleDragEnd}
@@ -817,7 +1001,7 @@ export function NamespaceBrowser({
   }
 
   return (
-    <div className="namespace-browser">
+    <div className="namespace-browser" ref={containerRef}>
       <div className="search-box">
         <input
           type="text"
@@ -840,7 +1024,11 @@ export function NamespaceBrowser({
       {loading && searchResults.length === 0 && rootNodes.length === 0 ? (
         <div className="loading">Loading...</div>
       ) : (
-        <div className="namespace-items">
+        <div
+          className={`namespace-items ${dropTarget?.path === '__root__' ? 'drop-target-root' : ''}`}
+          onDragOver={handleContainerDragOver}
+          onDrop={handleContainerDrop}
+        >
           {searchQuery.trim() ? (
             // Show search results
             searchResults.length === 0 ? (

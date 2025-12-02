@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useLayoutEffect } from 'react';
 
 export interface ContextMenuItem {
   label: string;
@@ -17,6 +17,8 @@ interface ContextMenuProps {
 
 export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ x, y });
+  const [isPositioned, setIsPositioned] = useState(false);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -40,8 +42,8 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     };
   }, [onClose]);
 
-  // Adjust position if menu would go off screen
-  useEffect(() => {
+  // Adjust position if menu would go off screen - use useLayoutEffect to measure before paint
+  useLayoutEffect(() => {
     if (menuRef.current) {
       const rect = menuRef.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
@@ -50,16 +52,22 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       let adjustedX = x;
       let adjustedY = y;
 
-      if (rect.right > viewportWidth) {
+      // Adjust horizontal position if menu would overflow right edge
+      if (x + rect.width > viewportWidth) {
         adjustedX = viewportWidth - rect.width - 10;
       }
 
-      if (rect.bottom > viewportHeight) {
-        adjustedY = viewportHeight - rect.height - 10;
+      // Adjust vertical position if menu would overflow bottom edge
+      if (y + rect.height > viewportHeight) {
+        adjustedY = y - rect.height; // Show above the click point
+        // If that would go off the top, just pin to bottom of viewport
+        if (adjustedY < 10) {
+          adjustedY = viewportHeight - rect.height - 10;
+        }
       }
 
-      menuRef.current.style.left = `${adjustedX}px`;
-      menuRef.current.style.top = `${adjustedY}px`;
+      setPosition({ x: adjustedX, y: adjustedY });
+      setIsPositioned(true);
     }
   }, [x, y]);
 
@@ -69,8 +77,9 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       className="context-menu"
       style={{
         position: 'fixed',
-        left: x,
-        top: y,
+        left: position.x,
+        top: position.y,
+        visibility: isPositioned ? 'visible' : 'hidden', // Hide until positioned to prevent flicker
       }}
     >
       {items.map((item, index) => {
