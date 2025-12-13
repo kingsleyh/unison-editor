@@ -57,6 +57,25 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Update version in config files
+        run: |
+          VERSION="${{ needs.create-release.outputs.version }}"
+          echo "Setting version to $VERSION"
+
+          # Update tauri.conf.json
+          sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+
+          # Update Cargo.toml
+          sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+
+          # Update package.json
+          sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+
+          echo "Updated versions:"
+          grep '"version"' src-tauri/tauri.conf.json
+          grep '^version' src-tauri/Cargo.toml
+          grep '"version"' package.json
+
       - name: Install dependencies
         run: npm ci
 
@@ -207,6 +226,25 @@ jobs:
             librsvg2-dev \
             patchelf \
             libssl-dev
+
+      - name: Update version in config files
+        run: |
+          VERSION="${{ needs.create-release.outputs.version }}"
+          echo "Setting version to $VERSION"
+
+          # Update tauri.conf.json
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+
+          # Update Cargo.toml
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+
+          # Update package.json
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+
+          echo "Updated versions:"
+          grep '"version"' src-tauri/tauri.conf.json
+          grep '^version' src-tauri/Cargo.toml
+          grep '"version"' package.json
 
       - name: Install dependencies
         run: npm ci

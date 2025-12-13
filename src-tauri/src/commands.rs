@@ -12,11 +12,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, State};
+use tokio::sync::Mutex as TokioMutex;
 
 pub struct AppState {
     pub ucm_client: Mutex<Option<UCMApiClient>>,
     pub mcp_client: Mutex<Option<MCPClient>>,
-    pub ucm_pty: Mutex<Option<UCMPtyManager>>,
+    /// UCM PTY manager - uses tokio Mutex for async access
+    pub ucm_pty: TokioMutex<Option<UCMPtyManager>>,
     /// UCM HTTP API port (dynamically allocated, default 5858)
     pub api_port: Mutex<u16>,
     /// UCM LSP server port (dynamically allocated, default 5757)
@@ -33,7 +35,7 @@ impl Default for AppState {
             // UCM client will be initialized when UCM is spawned with the actual port
             ucm_client: Mutex::new(None),
             mcp_client: Mutex::new(None),
-            ucm_pty: Mutex::new(None),
+            ucm_pty: TokioMutex::new(None),
             api_port: Mutex::new(5858),
             lsp_port: Mutex::new(5757),
             lsp_proxy_port: Mutex::new(5758),
@@ -628,7 +630,6 @@ pub fn view_definitions(
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex as TokioMutex;
 
 pub struct LSPConnection {
     pub stream: Arc<TokioMutex<Option<TcpStream>>>,
@@ -742,7 +743,7 @@ async fn read_lsp_message(stream: &mut TcpStream) -> Result<String, anyhow::Erro
 
 // UCM PTY Commands - For integrated terminal
 
-/// Spawn UCM with PTY for interactive terminal
+/// Spawn UCM with async PTY for interactive terminal
 ///
 /// # Arguments
 /// * `cwd` - Optional working directory for UCM (for file loading via `load` command)
@@ -750,12 +751,12 @@ async fn read_lsp_message(stream: &mut TcpStream) -> Result<String, anyhow::Erro
 /// # Returns
 /// The allocated service ports (API and LSP)
 #[tauri::command]
-pub fn ucm_pty_spawn(
+pub async fn ucm_pty_spawn(
     cwd: Option<String>,
     app_handle: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ServicePorts, String> {
-    let mut pty_guard = state.ucm_pty.lock().unwrap();
+    let mut pty_guard = state.ucm_pty.lock().await;
 
     // If already running, check if it's still actually running
     // (UCM might have crashed due to file lock or other errors)
@@ -774,7 +775,8 @@ pub fn ucm_pty_spawn(
         }
     }
 
-    let (manager, ucm_ports) = UCMPtyManager::spawn(app_handle, cwd)?;
+    // Async spawn - no blocking!
+    let (manager, ucm_ports) = UCMPtyManager::spawn(app_handle.clone(), cwd).await?;
     *pty_guard = Some(manager);
 
     // Find available port for LSP WebSocket proxy (starting at 5758)
@@ -819,41 +821,41 @@ pub fn ucm_pty_spawn(
     })
 }
 
-/// Write data to UCM PTY (user input from terminal)
+/// Write data to UCM PTY (user input from terminal) - async, non-blocking
 #[tauri::command]
-pub fn ucm_pty_write(
+pub async fn ucm_pty_write(
     data: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let pty_guard = state.ucm_pty.lock().unwrap();
+    let pty_guard = state.ucm_pty.lock().await;
     let manager = pty_guard
         .as_ref()
         .ok_or("UCM PTY not spawned")?;
 
-    manager.write(data.as_bytes())
+    manager.write(data.as_bytes()).await
 }
 
-/// Resize UCM PTY (when terminal is resized)
+/// Resize UCM PTY (when terminal is resized) - async, non-blocking
 #[tauri::command]
-pub fn ucm_pty_resize(
+pub async fn ucm_pty_resize(
     rows: u16,
     cols: u16,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let pty_guard = state.ucm_pty.lock().unwrap();
+    let pty_guard = state.ucm_pty.lock().await;
     let manager = pty_guard
         .as_ref()
         .ok_or("UCM PTY not spawned")?;
 
-    manager.resize(rows, cols)
+    manager.resize(rows, cols).await
 }
 
 /// Get current UCM context (project/branch) detected from PTY output
 #[tauri::command]
-pub fn ucm_pty_get_context(
+pub async fn ucm_pty_get_context(
     state: State<'_, AppState>,
 ) -> Result<UCMContext, String> {
-    let pty_guard = state.ucm_pty.lock().unwrap();
+    let pty_guard = state.ucm_pty.lock().await;
     let manager = pty_guard
         .as_ref()
         .ok_or("UCM PTY not spawned")?;
@@ -861,29 +863,29 @@ pub fn ucm_pty_get_context(
     Ok(manager.get_context())
 }
 
-/// Send switch command to UCM via PTY
+/// Send switch command to UCM via PTY - async
 /// This switches UCM's project/branch context in the integrated terminal
 #[tauri::command]
-pub fn ucm_pty_switch_context(
+pub async fn ucm_pty_switch_context(
     project: String,
     branch: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let pty_guard = state.ucm_pty.lock().unwrap();
+    let pty_guard = state.ucm_pty.lock().await;
     let manager = pty_guard
         .as_ref()
         .ok_or("UCM PTY not spawned")?;
 
-    manager.switch_context(&project, &branch)
+    manager.switch_context(&project, &branch).await
 }
 
 /// Kill the UCM PTY process
 /// This should be called before spawning a new UCM PTY with a different working directory
 #[tauri::command]
-pub fn ucm_pty_kill(
+pub async fn ucm_pty_kill(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut pty_guard = state.ucm_pty.lock().unwrap();
+    let mut pty_guard = state.ucm_pty.lock().await;
 
     if let Some(manager) = pty_guard.take() {
         log::info!("Killing UCM PTY");

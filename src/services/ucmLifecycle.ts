@@ -56,6 +56,19 @@ class UCMLifecycleService {
       this.notifyStatusChange('error', 'Another UCM process is using this codebase');
       this.state.ports = null;
     });
+
+    // Listen for UCM process exit (user typed 'exit' or process crashed)
+    await listen('ucm-process-exited', () => {
+      logger.info('ucm', 'UCM process exited');
+      this.notifyStatusChange('stopped');
+      this.state.ports = null;
+      // Clean up output listener since process is gone
+      if (this.unlistenOutput) {
+        this.unlistenOutput();
+        this.unlistenOutput = null;
+      }
+    });
+
     logger.debug('ucm', 'UCM lifecycle service initialized');
   }
 
@@ -215,6 +228,26 @@ class UCMLifecycleService {
       this.state.error = null;
       // Keep workspaceDirectory so spawn knows what folder to use
     }
+  }
+
+  /**
+   * Restart UCM (useful after exit or crash)
+   * Returns true if restart was successful
+   */
+  async restart(): Promise<boolean> {
+    const workspaceDir = this.state.workspaceDirectory;
+    if (!workspaceDir) {
+      logger.warn('ucm', 'Cannot restart UCM - no workspace directory');
+      return false;
+    }
+
+    logger.info('ucm', 'Restarting UCM');
+
+    // Reset state to allow spawn
+    this.state.status = 'idle';
+    this.state.error = null;
+
+    return this.spawn(workspaceDir);
   }
 
   /**
