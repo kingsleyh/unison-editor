@@ -11,8 +11,8 @@ import { TabBar } from './components/TabBar';
 import { CodebaseActions } from './components/CodebaseActions';
 import { RunPane } from './components/RunPane';
 import { LogPanel } from './components/LogPanel';
-import { UCMTerminal } from './components/UCMTerminal';
-import { GeneralTerminal } from './components/GeneralTerminal';
+import { UCMTerminal, type UCMTerminalHandle } from './components/UCMTerminal';
+import { GeneralTerminal, type GeneralTerminalHandle } from './components/GeneralTerminal';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { UCMConflictModal } from './components/UCMConflictModal';
 import { FileConflictModal } from './components/FileConflictModal';
@@ -20,6 +20,9 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { FileCreationModal } from './components/FileCreationModal';
 import { AlertModal } from './components/AlertModal';
 import { Breadcrumbs } from './components/Breadcrumbs';
+import { CommandPalette } from './components/CommandPalette';
+import { KeyboardShortcutsSettings } from './components/KeyboardShortcutsSettings';
+import { useKeyboardShortcutListener } from './hooks/useKeyboardShortcuts';
 import type * as Monaco from 'monaco-editor';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
@@ -59,7 +62,18 @@ function App() {
     setAutoRun,
     layout,
     setLayout,
+    // Closed tabs for reopen feature
+    addClosedTab,
+    popClosedTab,
+    // Command palette and settings modals
+    commandPaletteOpen,
+    setCommandPaletteOpen,
+    shortcutsSettingsOpen,
+    setShortcutsSettingsOpen,
   } = useUnisonStore();
+
+  // Initialize keyboard shortcut listener
+  const shortcutService = useKeyboardShortcutListener();
 
   // State for showing welcome screen vs main editor
   const [showWelcome, setShowWelcome] = useState(!workspaceDirectory);
@@ -133,6 +147,10 @@ function App() {
   // Promise that resolves when file lock error listener is ready
   const fileLockListenerReadyRef = useRef<Promise<void> | null>(null);
   const fileLockListenerResolveRef = useRef<(() => void) | null>(null);
+
+  // Terminal refs for keyboard focus
+  const ucmTerminalRef = useRef<UCMTerminalHandle>(null);
+  const generalTerminalRef = useRef<GeneralTerminalHandle>(null);
 
   // Initialize theme system on mount
   useEffect(() => {
@@ -1423,19 +1441,254 @@ function App() {
     }
   }
 
-  // Keyboard shortcut handler
+  // Wire up keyboard shortcut actions
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      // Cmd+S (Mac) or Ctrl+S (Windows/Linux)
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault();
-        saveCurrentFile();
-      }
-    }
+    // General shortcuts
+    shortcutService.setAction('general.commandPalette', () => setCommandPaletteOpen(true));
+    shortcutService.setAction('general.save', saveCurrentFile);
+    shortcutService.setAction('general.settings', () => setShortcutsSettingsOpen(true));
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveCurrentFile]);
+    // Navigation - Focus editor
+    shortcutService.setAction('nav.focusEditor', () => {
+      editorInstance?.focus();
+    });
+
+    // Navigation - Focus panel shortcuts (open if closed, keep open if already open)
+    shortcutService.setAction('nav.focusUcm', () => {
+      const { layout } = useUnisonStore.getState();
+      // Ensure bottom panel is expanded
+      if (layout.bottomPanelCollapsed) {
+        setLayout({ bottomPanelCollapsed: false });
+      }
+      // Open the panel if closed
+      if (layout.ucmPanelCollapsed) {
+        setUcmPanelCollapsed(false);
+      }
+      // Focus the terminal after state updates have rendered
+      setTimeout(() => ucmTerminalRef.current?.focus(), 50);
+    });
+
+    shortcutService.setAction('nav.focusOutput', () => {
+      const { layout } = useUnisonStore.getState();
+      if (layout.bottomPanelCollapsed) {
+        setLayout({ bottomPanelCollapsed: false });
+      }
+      if (layout.outputPanelCollapsed) {
+        setOutputPanelCollapsed(false);
+      }
+      // Output panel is read-only, no focus needed
+    });
+
+    shortcutService.setAction('nav.focusLogs', () => {
+      const { layout } = useUnisonStore.getState();
+      if (layout.bottomPanelCollapsed) {
+        setLayout({ bottomPanelCollapsed: false });
+      }
+      const logCollapsed = layout.logPanelCollapsed ?? true;
+      if (logCollapsed) {
+        setLogPanelCollapsed(false);
+      }
+      // Logs panel is read-only, no focus needed
+    });
+
+    shortcutService.setAction('nav.focusTerminal', () => {
+      const { layout } = useUnisonStore.getState();
+      if (layout.bottomPanelCollapsed) {
+        setLayout({ bottomPanelCollapsed: false });
+      }
+      if (layout.terminalPanelCollapsed) {
+        setTerminalPanelCollapsed(false);
+      }
+      // Focus the terminal after state updates have rendered
+      setTimeout(() => generalTerminalRef.current?.focus(), 50);
+    });
+
+    // Navigation - Toggle panel shortcuts (open/close)
+    shortcutService.setAction('nav.toggleUcm', () => {
+      const { layout } = useUnisonStore.getState();
+      if (layout.ucmPanelCollapsed) {
+        // Opening - ensure bottom panel is expanded
+        if (layout.bottomPanelCollapsed) {
+          setLayout({ bottomPanelCollapsed: false });
+        }
+        setUcmPanelCollapsed(false);
+      } else {
+        // Closing
+        setUcmPanelCollapsed(true);
+      }
+    });
+
+    shortcutService.setAction('nav.toggleOutput', () => {
+      const { layout } = useUnisonStore.getState();
+      if (layout.outputPanelCollapsed) {
+        if (layout.bottomPanelCollapsed) {
+          setLayout({ bottomPanelCollapsed: false });
+        }
+        setOutputPanelCollapsed(false);
+      } else {
+        setOutputPanelCollapsed(true);
+      }
+    });
+
+    shortcutService.setAction('nav.toggleLogs', () => {
+      const { layout } = useUnisonStore.getState();
+      const logCollapsed = layout.logPanelCollapsed ?? true;
+      if (logCollapsed) {
+        if (layout.bottomPanelCollapsed) {
+          setLayout({ bottomPanelCollapsed: false });
+        }
+        setLogPanelCollapsed(false);
+      } else {
+        setLogPanelCollapsed(true);
+      }
+    });
+
+    shortcutService.setAction('nav.toggleTerminal', () => {
+      const { layout } = useUnisonStore.getState();
+      if (layout.terminalPanelCollapsed) {
+        if (layout.bottomPanelCollapsed) {
+          setLayout({ bottomPanelCollapsed: false });
+        }
+        setTerminalPanelCollapsed(false);
+      } else {
+        setTerminalPanelCollapsed(true);
+      }
+    });
+
+    // Navigation - Tab management
+    shortcutService.setAction('nav.nextTab', () => {
+      const { tabs, activeTabId } = useUnisonStore.getState();
+      if (tabs.length === 0) return;
+      const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+      const nextIndex = (currentIndex + 1) % tabs.length;
+      setActiveTab(tabs[nextIndex].id);
+    });
+
+    shortcutService.setAction('nav.prevTab', () => {
+      const { tabs, activeTabId } = useUnisonStore.getState();
+      if (tabs.length === 0) return;
+      const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+      const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      setActiveTab(tabs[prevIndex].id);
+    });
+
+    shortcutService.setAction('nav.closeTab', () => {
+      const { tabs, activeTabId } = useUnisonStore.getState();
+      if (activeTabId) {
+        const activeTab = tabs.find((t) => t.id === activeTabId);
+        if (activeTab) {
+          addClosedTab(activeTab);
+        }
+        removeTab(activeTabId);
+      }
+    });
+
+    shortcutService.setAction('nav.reopenTab', () => {
+      const tab = popClosedTab();
+      if (tab) {
+        // Generate new ID to avoid conflicts
+        const newTab = { ...tab, id: `tab-${Date.now()}` };
+        addTab(newTab);
+      }
+    });
+
+    // Editor shortcuts
+    shortcutService.setAction('editor.format', handleFormat);
+    shortcutService.setAction('editor.runWatches', handleRunAllWatchExpressions);
+    shortcutService.setAction('editor.runTests', handleRunAllTestExpressions);
+    shortcutService.setAction('editor.toggleAutoRun', () => {
+      const { autoRun } = useUnisonStore.getState();
+      setAutoRun(!autoRun);
+    });
+
+    // Monaco editor actions
+    shortcutService.setAction('editor.duplicateLine', () => {
+      editorInstance?.getAction('editor.action.copyLinesDownAction')?.run();
+    });
+    shortcutService.setAction('editor.deleteLine', () => {
+      editorInstance?.getAction('editor.action.deleteLines')?.run();
+    });
+    shortcutService.setAction('editor.moveLineUp', () => {
+      editorInstance?.getAction('editor.action.moveLinesUpAction')?.run();
+    });
+    shortcutService.setAction('editor.moveLineDown', () => {
+      editorInstance?.getAction('editor.action.moveLinesDownAction')?.run();
+    });
+    shortcutService.setAction('editor.selectAllOccurrences', () => {
+      editorInstance?.getAction('editor.action.selectHighlights')?.run();
+    });
+    shortcutService.setAction('editor.addCursorAbove', () => {
+      editorInstance?.getAction('editor.action.insertCursorAbove')?.run();
+    });
+    shortcutService.setAction('editor.addCursorBelow', () => {
+      editorInstance?.getAction('editor.action.insertCursorBelow')?.run();
+    });
+    shortcutService.setAction('editor.goToLine', () => {
+      editorInstance?.getAction('editor.action.gotoLine')?.run();
+    });
+    shortcutService.setAction('editor.toggleComment', () => {
+      editorInstance?.getAction('editor.action.commentLine')?.run();
+    });
+
+    // View shortcuts - these are pure toggles
+    shortcutService.setAction('view.toggleNavigation', () => {
+      const { layout } = useUnisonStore.getState();
+      setNavPanelCollapsed(!layout.navPanelCollapsed);
+    });
+
+    shortcutService.setAction('view.toggleBottomPanel', () => {
+      const { layout } = useUnisonStore.getState();
+      setLayout({ bottomPanelCollapsed: !layout.bottomPanelCollapsed });
+    });
+
+    shortcutService.setAction('view.toggleTermsPanel', () => {
+      const { layout } = useUnisonStore.getState();
+      setTermsPanelCollapsed(!layout.termsPanelCollapsed);
+    });
+
+    // Sidebar panel toggles
+    shortcutService.setAction('view.toggleWorkspace', () => {
+      const { layout } = useUnisonStore.getState();
+      setLayout({ workspaceExpanded: !layout.workspaceExpanded });
+    });
+
+    shortcutService.setAction('view.toggleFileExplorer', () => {
+      const { layout } = useUnisonStore.getState();
+      setLayout({ fileExplorerExpanded: !layout.fileExplorerExpanded });
+    });
+
+    shortcutService.setAction('view.toggleOutline', () => {
+      const { layout } = useUnisonStore.getState();
+      setLayout({ outlineExpanded: !layout.outlineExpanded });
+    });
+
+    shortcutService.setAction('view.toggleUcmExplorer', () => {
+      const { layout } = useUnisonStore.getState();
+      setLayout({ ucmExplorerExpanded: !layout.ucmExplorerExpanded });
+    });
+  }, [
+    shortcutService,
+    saveCurrentFile,
+    setCommandPaletteOpen,
+    setShortcutsSettingsOpen,
+    editorInstance,
+    setActiveTab,
+    removeTab,
+    addClosedTab,
+    popClosedTab,
+    addTab,
+    handleFormat,
+    handleRunAllWatchExpressions,
+    handleRunAllTestExpressions,
+    setAutoRun,
+    setNavPanelCollapsed,
+    setTermsPanelCollapsed,
+    setLayout,
+    setUcmPanelCollapsed,
+    setOutputPanelCollapsed,
+    setLogPanelCollapsed,
+    setTerminalPanelCollapsed,
+  ]);
 
   function handleNewFile() {
     // Show the file creation modal instead of creating an in-memory scratch file
@@ -1649,7 +1902,7 @@ function App() {
                               label: 'UCM',
                               component: (
                                 <ErrorBoundary name="UCM Terminal">
-                                  <UCMTerminal isCollapsed={ucmPanelCollapsed} />
+                                  <UCMTerminal ref={ucmTerminalRef} isCollapsed={ucmPanelCollapsed} />
                                 </ErrorBoundary>
                               ),
                               collapsed: ucmPanelCollapsed,
@@ -1706,7 +1959,7 @@ function App() {
                               label: 'Terminal',
                               component: (
                                 <ErrorBoundary name="Terminal">
-                                  <GeneralTerminal isCollapsed={terminalPanelCollapsed} />
+                                  <GeneralTerminal ref={generalTerminalRef} isCollapsed={terminalPanelCollapsed} />
                                 </ErrorBoundary>
                               ),
                               collapsed: terminalPanelCollapsed,
@@ -1751,6 +2004,16 @@ function App() {
         onClose={() => setAlertModal(null)}
         title={alertModal?.title}
         message={alertModal?.message || ''}
+      />
+
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
+
+      <KeyboardShortcutsSettings
+        isOpen={shortcutsSettingsOpen}
+        onClose={() => setShortcutsSettingsOpen(false)}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -8,15 +8,27 @@ interface GeneralTerminalProps {
   isCollapsed: boolean;
 }
 
+export interface GeneralTerminalHandle {
+  focus: () => void;
+}
+
 /**
  * A general-purpose terminal component.
  * Currently displays a placeholder - could be extended to spawn a shell PTY.
+ * Exposes focus() via ref for keyboard shortcuts.
  */
-export function GeneralTerminal({ isCollapsed }: GeneralTerminalProps) {
+export const GeneralTerminal = forwardRef<GeneralTerminalHandle, GeneralTerminalProps>(function GeneralTerminal({ isCollapsed }, ref) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+
+  // Expose focus method via ref for keyboard shortcuts
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      xtermRef.current?.focus();
+    },
+  }), []);
 
   // Initialize terminal
   useEffect(() => {
@@ -135,4 +147,4 @@ export function GeneralTerminal({ isCollapsed }: GeneralTerminalProps) {
       />
     </div>
   );
-}
+});

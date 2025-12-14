@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -7,6 +7,10 @@ import '@xterm/xterm/css/xterm.css';
 
 interface UCMTerminalProps {
   isCollapsed: boolean;
+}
+
+export interface UCMTerminalHandle {
+  focus: () => void;
 }
 
 // Debounce utility
@@ -30,8 +34,9 @@ function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number):
  * - Debounced resize to prevent rapid fit() calls
  * - Visibility change handling to refresh on tab switch
  * - Proper focus management
+ * - Exposes focus() via ref for keyboard shortcuts
  */
-export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
+export const UCMTerminal = forwardRef<UCMTerminalHandle, UCMTerminalProps>(function UCMTerminal({ isCollapsed }, ref) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -42,6 +47,13 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
   const wasCollapsedRef = useRef(isCollapsed);
   // Track if we've ever expanded (to send initial clear only once)
   const hasExpandedOnceRef = useRef(false);
+
+  // Expose focus method via ref for keyboard shortcuts
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      xtermRef.current?.focus();
+    },
+  }), []);
 
   // Check if container has valid dimensions for terminal rendering
   const hasValidDimensions = useCallback(() => {
@@ -364,4 +376,4 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
       />
     </div>
   );
-}
+});

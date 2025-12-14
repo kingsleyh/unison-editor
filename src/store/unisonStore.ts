@@ -119,6 +119,13 @@ interface UnisonState {
   logs: LogEntry[];
   logFilter: LogFilter;
 
+  // Closed tabs for reopen feature
+  closedTabs: EditorTab[];
+
+  // UI modals state
+  commandPaletteOpen: boolean;
+  shortcutsSettingsOpen: boolean;
+
   // Actions
   setConnection: (host: string, port: number, lspPort: number) => void;
   setConnected: (connected: boolean) => void;
@@ -177,6 +184,15 @@ interface UnisonState {
   addLog: (entry: Omit<LogEntry, 'id' | 'timestamp'>) => void;
   clearLogs: () => void;
   setLogFilter: (filter: Partial<LogFilter>) => void;
+
+  // Closed tabs actions (for reopen feature)
+  addClosedTab: (tab: EditorTab) => void;
+  popClosedTab: () => EditorTab | null;
+  clearClosedTabs: () => void;
+
+  // UI modal actions
+  setCommandPaletteOpen: (open: boolean) => void;
+  setShortcutsSettingsOpen: (open: boolean) => void;
 }
 
 export const useUnisonStore = create<UnisonState>((set, get) => ({
@@ -224,6 +240,13 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   // Logging state
   logs: [],
   logFilter: { ...DEFAULT_LOG_FILTER },
+
+  // Closed tabs for reopen feature
+  closedTabs: [],
+
+  // UI modals state
+  commandPaletteOpen: false,
+  shortcutsSettingsOpen: false,
 
   // Actions
   setConnection: (host, port, lspPort) =>
@@ -329,6 +352,7 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
       workspaceConfigLoaded: false,
       tabs: [],
       activeTabId: null,
+      closedTabs: [],
       definitionCards: [],
       selectedCardId: null,
       runOutput: null,
@@ -419,4 +443,25 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
     set((state) => ({
       logFilter: { ...state.logFilter, ...filter },
     })),
+
+  // Closed tabs actions
+  addClosedTab: (tab) =>
+    set((state) => ({
+      // Keep last 10 closed tabs
+      closedTabs: [tab, ...state.closedTabs].slice(0, 10),
+    })),
+
+  popClosedTab: () => {
+    const state = get();
+    if (state.closedTabs.length === 0) return null;
+    const [tab, ...rest] = state.closedTabs;
+    set({ closedTabs: rest });
+    return tab;
+  },
+
+  clearClosedTabs: () => set({ closedTabs: [] }),
+
+  // UI modal actions
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+  setShortcutsSettingsOpen: (open) => set({ shortcutsSettingsOpen: open }),
 }));
