@@ -28,11 +28,6 @@ export function formatUnisonCode(code: string, options: FormatOptions = { tabSiz
   let inCases = false;
   let inMultiLineString = false; // Track if we're inside """ ... """
 
-  // Track binding indentation for normalizing sibling bindings
-  // Stack of indent levels for each scope depth
-  const bindingIndentStack: number[] = [];
-  let lastBindingIndent = -1;
-
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
@@ -126,7 +121,7 @@ export function formatUnisonCode(code: string, options: FormatOptions = { tabSiz
 
       // Normalize spaces around = in definitions (but not ==, ===, !=, <=, >=)
       // Only match single = that's used for assignment, not comparison
-      codePart = codePart.replace(/(\w)\s*=\s*(\w)/g, (match, before, after) => {
+      codePart = codePart.replace(/(\w)\s*=\s*(\w)/g, (_match, before, after) => {
         return `${before} = ${after}`;
       });
       // Also handle = at end of line (like `foo =` in multi-line definitions)
@@ -369,7 +364,7 @@ function normalizeSiblingBindings(code: string, tabSize: number): string {
 
     if (match) {
       const currentIndent = match[1].length;
-      const bindingName = match[2];
+      // match[2] is the binding name (unused but available)
 
       // Skip top-level definitions (indent 0)
       if (currentIndent === 0) {
