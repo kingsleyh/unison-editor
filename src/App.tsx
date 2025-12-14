@@ -19,6 +19,8 @@ import { FileConflictModal } from './components/FileConflictModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FileCreationModal } from './components/FileCreationModal';
 import { AlertModal } from './components/AlertModal';
+import { Breadcrumbs } from './components/Breadcrumbs';
+import type * as Monaco from 'monaco-editor';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
@@ -72,6 +74,9 @@ function App() {
     id: number;
   } | null>(null);
   const [revealInTree, setRevealInTree] = useState<string | null>(null);
+
+  // Editor instance for Breadcrumbs and Outline
+  const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   // Panel collapse states from layout (stored in Zustand, persisted per-workspace)
   const navPanelCollapsed = layout.navPanelCollapsed;
@@ -1087,6 +1092,16 @@ function App() {
   }
 
   /**
+   * Handle format document action.
+   * Triggers Monaco's built-in format command which uses our registered LSP formatting provider.
+   */
+  function handleFormat() {
+    if (editorInstance) {
+      editorInstance.getAction('editor.action.formatDocument')?.run();
+    }
+  }
+
+  /**
    * Handle manual typecheck of the current file.
    * Similar to handleAutoRun but triggered manually via button.
    */
@@ -1532,11 +1547,17 @@ function App() {
                   workspaceExpanded={layout.workspaceExpanded}
                   fileExplorerExpanded={layout.fileExplorerExpanded}
                   ucmExplorerExpanded={layout.ucmExplorerExpanded}
+                  outlineExpanded={layout.outlineExpanded}
                   sidebarSplitPercent={layout.sidebarSplitPercent}
+                  outlineSplitPercent={layout.outlineSplitPercent}
                   onWorkspaceExpandedChange={(expanded) => setLayout({ workspaceExpanded: expanded })}
                   onFileExplorerExpandedChange={(expanded) => setLayout({ fileExplorerExpanded: expanded })}
                   onUcmExplorerExpandedChange={(expanded) => setLayout({ ucmExplorerExpanded: expanded })}
+                  onOutlineExpandedChange={(expanded) => setLayout({ outlineExpanded: expanded })}
                   onSidebarSplitPercentChange={(percent) => setLayout({ sidebarSplitPercent: percent })}
+                  onOutlineSplitPercentChange={(percent) => setLayout({ outlineSplitPercent: percent })}
+                  editor={editorInstance}
+                  activeFileName={activeTab?.filePath?.split('/').pop()}
                 />
               </ErrorBoundary>
             }
@@ -1569,7 +1590,16 @@ function App() {
                         onTabClick={setActiveTab}
                         onTabClose={removeTab}
                       />
-                      <CodebaseActions onTypecheckAll={handleTypecheckAll} onRunAllWatchExpressions={handleRunAllWatchExpressions} onRunAllTestExpressions={handleRunAllTestExpressions} diagnosticCount={diagnosticCount} />
+                      <CodebaseActions onTypecheckAll={handleTypecheckAll} onRunAllWatchExpressions={handleRunAllWatchExpressions} onRunAllTestExpressions={handleRunAllTestExpressions} onFormat={handleFormat} diagnosticCount={diagnosticCount} />
+                      <Breadcrumbs
+                        fileName={activeTab?.filePath?.split('/').pop()}
+                        editor={editorInstance}
+                        onNavigate={(line) => {
+                          editorInstance?.revealLineInCenter(line);
+                          editorInstance?.setPosition({ lineNumber: line, column: 1 });
+                          editorInstance?.focus();
+                        }}
+                      />
                     </div>
 
                     <VerticalResizableSplitter
@@ -1596,6 +1626,7 @@ function App() {
                                 onRunTestExpression={handleRunTestExpression}
                                 onRunFunction={handleRunFunction}
                                 onDiagnosticsChange={setDiagnosticCount}
+                                onEditorMount={setEditorInstance}
                               />
                             ) : (
                               <div className="no-editor">

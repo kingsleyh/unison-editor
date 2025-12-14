@@ -20,10 +20,11 @@ interface CodebaseActionsProps {
   onTypecheckAll?: () => void;
   onRunAllWatchExpressions?: () => void;
   onRunAllTestExpressions?: () => void;
+  onFormat?: () => void;
   diagnosticCount?: DiagnosticCount;
 }
 
-export function CodebaseActions({ onSuccess, onTypecheckAll, onRunAllWatchExpressions, onRunAllTestExpressions, diagnosticCount }: CodebaseActionsProps) {
+export function CodebaseActions({ onSuccess, onTypecheckAll, onRunAllWatchExpressions, onRunAllTestExpressions, onFormat, diagnosticCount }: CodebaseActionsProps) {
   const {
     activeTabId,
     getActiveTab,
@@ -191,11 +192,25 @@ export function CodebaseActions({ onSuccess, onTypecheckAll, onRunAllWatchExpres
           )}
         </>
       )}
+      {/* Format button - always visible for Unison files */}
+      {isUnisonFile && onFormat && (
+        <button
+          className="codebase-action-btn format-btn"
+          onClick={onFormat}
+          disabled={!hasContent}
+          title="Format document (Shift+Alt+F)"
+        >
+          Format
+        </button>
+      )}
       {/* Status indicator - to the left of Save to Codebase */}
-      <div className={`editor-status-indicator ${hasProblems ? 'has-problems' : 'all-good'}`}>
-        {hasProblems ? (
+      <div className={`editor-status-indicator ${
+        diagnosticCount?.errors && diagnosticCount.errors > 0 ? 'has-errors' :
+        diagnosticCount?.warnings && diagnosticCount.warnings > 0 ? 'has-warnings' : 'all-good'
+      }`}>
+        {hasProblems && diagnosticCount ? (
           <>
-            <span className="status-icon">✗</span>
+            <span className="status-icon">{diagnosticCount.errors > 0 ? '✗' : '⚠'}</span>
             <span className="status-text">
               {diagnosticCount.errors > 0 && `${diagnosticCount.errors} error${diagnosticCount.errors > 1 ? 's' : ''}`}
               {diagnosticCount.errors > 0 && diagnosticCount.warnings > 0 && ', '}

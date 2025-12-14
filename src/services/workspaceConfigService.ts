@@ -48,7 +48,9 @@ export interface LayoutState {
   workspaceExpanded: boolean;      // Workspace panel in sidebar
   fileExplorerExpanded: boolean;
   ucmExplorerExpanded: boolean;
-  sidebarSplitPercent: number;     // 0-100
+  outlineExpanded: boolean;        // Document outline panel
+  sidebarSplitPercent: number;     // 0-100 (file explorer % of total)
+  outlineSplitPercent: number;     // 0-100 (outline % of outline+ucm area)
 
   // Terms panel (middle)
   termsPanelCollapsed: boolean;
@@ -78,7 +80,9 @@ export const DEFAULT_LAYOUT: LayoutState = {
   workspaceExpanded: true,
   fileExplorerExpanded: true,
   ucmExplorerExpanded: true,
-  sidebarSplitPercent: 50,
+  outlineExpanded: true,          // Document outline expanded by default
+  sidebarSplitPercent: 40,        // File explorer takes 40% of resizable area
+  outlineSplitPercent: 50,        // Outline and UCM split remaining 50/50
   termsPanelCollapsed: true,
   termsPanelWidth: 400,
   editorBottomSplitPercent: 65,

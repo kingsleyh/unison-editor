@@ -2609,6 +2609,24 @@ body {
   cursor: not-allowed;
 }
 
+/* Format button - purple color */
+.codebase-action-btn.format-btn {
+  background-color: transparent;
+  color: #c586c0;
+  border: 1px solid #c586c0;
+  font-size: 11px;
+}
+
+.codebase-action-btn.format-btn:hover:not(:disabled) {
+  background-color: rgba(197, 134, 192, 0.1);
+  color: #d4a0d0;
+}
+
+.codebase-action-btn.format-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .codebase-action-btn.update-btn {
   background-color: transparent;
   color: #cccccc;
@@ -3062,9 +3080,14 @@ body {
   color: #4ec9b0;
 }
 
-.editor-status-indicator.has-problems {
+.editor-status-indicator.has-errors {
   background-color: rgba(244, 135, 113, 0.15);
   color: #f48771;
+}
+
+.editor-status-indicator.has-warnings {
+  background-color: rgba(229, 192, 123, 0.15);
+  color: #e5c07b;
 }
 
 .editor-status-indicator .status-icon {
@@ -3866,7 +3889,8 @@ body {
 .collapsible-panel-stack {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   gap: 1px;
   background-color: #1e1e1e;
@@ -4489,4 +4513,419 @@ body {
 
 .log-scroll-btn:hover {
   background-color: #1177bb;
+}
+
+/* ============================================
+   BREADCRUMBS BAR
+   ============================================ */
+
+.breadcrumbs-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 12px;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  font-size: 12px;
+  min-height: 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.breadcrumbs-bar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.breadcrumbs-bar::-webkit-scrollbar-thumb {
+  background-color: #5a5a5a;
+  border-radius: 2px;
+}
+
+.breadcrumb-item-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.breadcrumb-separator {
+  color: #858585;
+  margin: 0 4px;
+  font-size: 11px;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: default;
+  transition: background-color 0.15s;
+}
+
+.breadcrumb-item.clickable {
+  cursor: pointer;
+}
+
+.breadcrumb-item.clickable:hover {
+  background-color: #3e3e42;
+}
+
+.breadcrumb-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 3px;
+}
+
+.breadcrumb-file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.breadcrumb-file-icon img {
+  width: 14px;
+  height: 14px;
+}
+
+.breadcrumb-name {
+  white-space: nowrap;
+}
+
+/* Breadcrumb type colors */
+.breadcrumb-type .breadcrumb-icon,
+.breadcrumb-icon.breadcrumb-type {
+  background-color: rgba(78, 201, 176, 0.2);
+  color: #4ec9b0;
+}
+
+.breadcrumb-ability .breadcrumb-icon,
+.breadcrumb-icon.breadcrumb-ability {
+  background-color: rgba(197, 134, 192, 0.2);
+  color: #c586c0;
+}
+
+.breadcrumb-function .breadcrumb-icon,
+.breadcrumb-icon.breadcrumb-function {
+  background-color: rgba(220, 220, 170, 0.2);
+  color: #dcdcaa;
+}
+
+.breadcrumb-variable .breadcrumb-icon,
+.breadcrumb-icon.breadcrumb-variable {
+  background-color: rgba(156, 220, 254, 0.2);
+  color: #9cdcfe;
+}
+
+.breadcrumb-test .breadcrumb-icon,
+.breadcrumb-icon.breadcrumb-test {
+  background-color: rgba(78, 201, 176, 0.2);
+  color: #4ec9b0;
+}
+
+.breadcrumb-watch .breadcrumb-icon,
+.breadcrumb-icon.breadcrumb-watch {
+  background-color: rgba(215, 186, 125, 0.2);
+  color: #d7ba7d;
+}
+
+.breadcrumb-namespace .breadcrumb-icon,
+.breadcrumb-icon.breadcrumb-namespace {
+  background-color: rgba(86, 156, 214, 0.2);
+  color: #569cd6;
+}
+
+/* ============================================
+   DOCUMENT OUTLINE PANEL
+   ============================================ */
+
+.document-outline {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background-color: #252526;
+  border-top: 1px solid #3e3e42;
+}
+
+.outline-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s;
+}
+
+.outline-header:hover {
+  background-color: #2a2d2e;
+}
+
+.outline-collapse-icon {
+  font-size: 10px;
+  color: #cccccc;
+  width: 12px;
+  text-align: center;
+  transition: transform 0.15s;
+}
+
+.outline-collapse-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.outline-collapse-icon:not(.expanded) {
+  transform: rotate(-90deg);
+}
+
+.outline-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #cccccc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.outline-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: #858585;
+  background-color: #3e3e42;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.outline-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+  overflow: hidden;
+}
+
+/* Outline panel content (used inside CollapsiblePanelStack) */
+.outline-panel-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.outline-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.outline-filter {
+  flex: 1;
+  padding: 4px 8px;
+  background-color: #3c3c3c;
+  border: 1px solid #3e3e42;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 11px;
+  outline: none;
+}
+
+.outline-filter:focus {
+  border-color: #007acc;
+}
+
+.outline-filter::placeholder {
+  color: #858585;
+}
+
+.outline-sort-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #858585;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.outline-sort-btn:hover {
+  background-color: #3e3e42;
+  color: #cccccc;
+}
+
+.outline-sort-btn.active {
+  color: #007acc;
+}
+
+.outline-symbols {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+
+.outline-symbols::-webkit-scrollbar {
+  width: 8px;
+}
+
+.outline-symbols::-webkit-scrollbar-thumb {
+  background-color: #5a5a5a;
+  border-radius: 4px;
+}
+
+.outline-symbols::-webkit-scrollbar-thumb:hover {
+  background-color: #6a6a6a;
+}
+
+.outline-empty {
+  padding: 12px;
+  text-align: center;
+  color: #858585;
+  font-size: 11px;
+}
+
+.outline-group {
+  margin-bottom: 4px;
+}
+
+.outline-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 10px;
+  color: #858585;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.outline-group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: 2px;
+}
+
+.outline-group-name {
+  flex: 1;
+}
+
+.outline-group-count {
+  font-size: 9px;
+  color: #6a6a6a;
+}
+
+.outline-symbol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 12px 4px 20px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.outline-symbol:hover {
+  background-color: #2a2d2e;
+}
+
+.outline-symbol.current {
+  background-color: #094771;
+}
+
+.outline-symbol.current:hover {
+  background-color: #0a5a8a;
+}
+
+.outline-symbol-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.outline-symbol-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline-symbol-detail {
+  color: #858585;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+.outline-symbol-line {
+  color: #6a6a6a;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+/* Outline symbol type colors */
+.outline-type {
+  background-color: rgba(78, 201, 176, 0.2);
+  color: #4ec9b0;
+}
+
+.outline-ability {
+  background-color: rgba(197, 134, 192, 0.2);
+  color: #c586c0;
+}
+
+.outline-function {
+  background-color: rgba(220, 220, 170, 0.2);
+  color: #dcdcaa;
+}
+
+.outline-variable {
+  background-color: rgba(156, 220, 254, 0.2);
+  color: #9cdcfe;
+}
+
+.outline-test {
+  background-color: rgba(78, 201, 176, 0.2);
+  color: #4ec9b0;
+}
+
+.outline-watch {
+  background-color: rgba(215, 186, 125, 0.2);
+  color: #d7ba7d;
+}
+
+.outline-namespace {
+  background-color: rgba(86, 156, 214, 0.2);
+  color: #569cd6;
 }

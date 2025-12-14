@@ -757,6 +757,13 @@ export function setMonacoEditor(editor: monaco.editor.IStandaloneCodeEditor): vo
 }
 
 /**
+ * Get the Monaco editor instance (for components like Breadcrumbs and Outline)
+ */
+export function getMonacoEditor(): monaco.editor.IStandaloneCodeEditor | null {
+  return monacoEditorInstance;
+}
+
+/**
  * Trigger the definition click callback (call this when user actually cmd+clicks)
  */
 export function triggerDefinitionClick(): void {

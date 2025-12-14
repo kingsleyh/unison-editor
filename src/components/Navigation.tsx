@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import type * as Monaco from 'monaco-editor';
 import { FileExplorer } from './FileExplorer';
 import { NamespaceBrowser, type TreeNode } from './NamespaceBrowser';
 import { WorkspaceProjectLinker } from './WorkspaceProjectLinker';
@@ -7,6 +8,7 @@ import { FolderCreationModal } from './FolderCreationModal';
 import { NamespaceRenameModal } from './NamespaceRenameModal';
 import { NamespaceDeleteModal } from './NamespaceDeleteModal';
 import { CollapsiblePanelStack, type PanelConfig } from './CollapsiblePanelStack';
+import { OutlinePanelContent } from './OutlinePanelContent';
 import { useUnisonStore } from '../store/unisonStore';
 import { getFileSystemService } from '../services/fileSystem';
 import { getUCMApiClient } from '../services/ucmApi';
@@ -26,16 +28,28 @@ interface NavigationProps {
   fileExplorerExpanded?: boolean;
   /** Controlled UCM explorer expanded state */
   ucmExplorerExpanded?: boolean;
-  /** Controlled split percent (file explorer %) */
+  /** Controlled outline expanded state */
+  outlineExpanded?: boolean;
+  /** Controlled split percent (file explorer % of total resizable area) */
   sidebarSplitPercent?: number;
+  /** Controlled split percent (outline % of outline+ucm area) */
+  outlineSplitPercent?: number;
   /** Callback when workspace expanded changes */
   onWorkspaceExpandedChange?: (expanded: boolean) => void;
   /** Callback when file explorer expanded changes */
   onFileExplorerExpandedChange?: (expanded: boolean) => void;
   /** Callback when UCM explorer expanded changes */
   onUcmExplorerExpandedChange?: (expanded: boolean) => void;
+  /** Callback when outline expanded changes */
+  onOutlineExpandedChange?: (expanded: boolean) => void;
   /** Callback when split percent changes */
   onSidebarSplitPercentChange?: (percent: number) => void;
+  /** Callback when outline split percent changes */
+  onOutlineSplitPercentChange?: (percent: number) => void;
+  /** Editor instance for outline */
+  editor?: Monaco.editor.IStandaloneCodeEditor | null;
+  /** Active file name for outline */
+  activeFileName?: string;
 }
 
 /**
@@ -84,11 +98,17 @@ export function Navigation({
   workspaceExpanded,
   fileExplorerExpanded,
   ucmExplorerExpanded,
+  outlineExpanded,
   sidebarSplitPercent,
+  outlineSplitPercent,
   onWorkspaceExpandedChange,
   onFileExplorerExpandedChange,
   onUcmExplorerExpandedChange,
+  onOutlineExpandedChange,
   onSidebarSplitPercentChange,
+  onOutlineSplitPercentChange,
+  editor,
+  activeFileName,
 }: NavigationProps) {
   const [showOnlyUnison, setShowOnlyUnison] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -378,6 +398,14 @@ export function Navigation({
     />
   );
 
+  // Outline panel content
+  const outlineContent = (
+    <OutlinePanelContent
+      editor={editor}
+      fileName={activeFileName}
+    />
+  );
+
   const panels: PanelConfig[] = [
     {
       id: 'workspace',
@@ -394,6 +422,13 @@ export function Navigation({
       minHeight: 100,
     },
     {
+      id: 'outline',
+      title: 'OUTLINE',
+      content: outlineContent,
+      defaultExpanded: true,
+      minHeight: 80,
+    },
+    {
       id: 'ucm-explorer',
       title: 'UCM EXPLORER',
       content: ucmExplorerContent,
@@ -408,12 +443,16 @@ export function Navigation({
         panels={panels}
         workspaceExpanded={workspaceExpanded}
         fileExplorerExpanded={fileExplorerExpanded}
+        outlineExpanded={outlineExpanded}
         ucmExplorerExpanded={ucmExplorerExpanded}
         splitPercent={sidebarSplitPercent}
+        outlineSplitPercent={outlineSplitPercent}
         onWorkspaceExpandedChange={onWorkspaceExpandedChange}
         onFileExplorerExpandedChange={onFileExplorerExpandedChange}
+        onOutlineExpandedChange={onOutlineExpandedChange}
         onUcmExplorerExpandedChange={onUcmExplorerExpandedChange}
         onSplitPercentChange={onSidebarSplitPercentChange}
+        onOutlineSplitPercentChange={onOutlineSplitPercentChange}
       />
 
       <FileCreationModal

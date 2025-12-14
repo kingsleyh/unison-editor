@@ -176,6 +176,41 @@ export function registerLspProviders(
     },
   });
 
+  // Register Document Formatting Provider
+  monacoInstance.languages.registerDocumentFormattingEditProvider(languageId, {
+    async provideDocumentFormattingEdits(model, options) {
+      try {
+        const result = await lspClient.sendLspRequest('textDocument/formatting', {
+          textDocument: {
+            uri: resolveUri(model.uri.toString()),
+          },
+          options: {
+            tabSize: options.tabSize,
+            insertSpaces: options.insertSpaces,
+          },
+        });
+
+        if (!result || result.length === 0) {
+          return [];
+        }
+
+        // Convert LSP TextEdit to Monaco TextEdit
+        return result.map((edit: any) => ({
+          range: {
+            startLineNumber: edit.range.start.line + 1,
+            startColumn: edit.range.start.character + 1,
+            endLineNumber: edit.range.end.line + 1,
+            endColumn: edit.range.end.character + 1,
+          },
+          text: edit.newText,
+        }));
+      } catch (error) {
+        console.error('Document formatting error:', error);
+        return [];
+      }
+    },
+  });
+
   console.log('LSP providers registered for', languageId);
 }
 

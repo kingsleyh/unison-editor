@@ -4,8 +4,11 @@ import type * as Monaco from 'monaco-editor';
 import { registerUnisonLanguage } from '../editor/unisonLanguage';
 import { getMonacoLspClient, type PublishDiagnosticsParams, type LspDiagnostic } from '../services/monacoLspClient';
 import { registerUCMProviders, setOnDefinitionClick, setMonacoEditor, triggerDefinitionClick } from '../services/monacoUcmProviders';
+import { registerDocumentSymbolProvider } from '../services/monacoSymbolProvider';
+import { registerDocumentHighlightProvider } from '../services/monacoHighlightProvider';
 import { ucmContext } from '../services/ucmContext';
 import { getUCMLifecycleService } from '../services/ucmLifecycle';
+import { formatUnisonCode } from '../services/unisonFormatter';
 import {
   detectWatchExpressions,
   isWatchExpressionLine,
@@ -34,6 +37,7 @@ interface EditorProps {
   onRunTestExpression?: (lineNumber: number, fullCode: string) => void;
   onRunFunction?: (functionName: string) => void;
   onDiagnosticsChange?: (diagnostics: DiagnosticCount) => void;
+  onEditorMount?: (editor: Monaco.editor.IStandaloneCodeEditor) => void;
 }
 
 /**
@@ -88,6 +92,7 @@ export function Editor({
   onRunTestExpression,
   onRunFunction,
   onDiagnosticsChange,
+  onEditorMount,
 }: EditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
@@ -234,6 +239,114 @@ export function Editor({
     registerUCMProviders(monaco, language);
     console.log('UCM providers registered (hover, completion, definition, signature help)');
 
+    // Register document symbol provider (enables outline, breadcrumbs, Ctrl+Shift+O)
+    registerDocumentSymbolProvider();
+
+    // Register document highlight provider (highlights all occurrences of selected symbol)
+    registerDocumentHighlightProvider();
+    console.log('Document symbol and highlight providers registered');
+
+    // Register document formatting provider (uses custom Unison formatter)
+    monaco.languages.registerDocumentFormattingEditProvider(language, {
+      provideDocumentFormattingEdits(model, options) {
+        try {
+          const originalCode = model.getValue();
+          const formattedCode = formatUnisonCode(originalCode, {
+            tabSize: options.tabSize,
+            insertSpaces: options.insertSpaces,
+          });
+
+          // If no changes, return empty array
+          if (originalCode === formattedCode) {
+            console.log('Formatting: no changes needed');
+            return [];
+          }
+
+          console.log('Formatting: applying changes');
+          // Return a single edit that replaces the entire document
+          const lineCount = model.getLineCount();
+          const lastLineLength = model.getLineLength(lineCount);
+
+          return [{
+            range: {
+              startLineNumber: 1,
+              startColumn: 1,
+              endLineNumber: lineCount,
+              endColumn: lastLineLength + 1,
+            },
+            text: formattedCode,
+          }];
+        } catch (error) {
+          console.error('Document formatting error:', error);
+          return [];
+        }
+      },
+    });
+
+    // Register range formatting provider (Format Selection)
+    monaco.languages.registerDocumentRangeFormattingEditProvider(language, {
+      provideDocumentRangeFormattingEdits(model, range, options) {
+        try {
+          // Get the selected text, expanding to full lines
+          const startLine = range.startLineNumber;
+          const endLine = range.endLineNumber;
+
+          // Get the full lines in the selection
+          const selectedLines: string[] = [];
+          for (let i = startLine; i <= endLine; i++) {
+            selectedLines.push(model.getLineContent(i));
+          }
+          const selectedText = selectedLines.join('\n');
+
+          // Detect the base indentation of the selection
+          const firstLineIndent = selectedLines[0].match(/^(\s*)/)?.[1] || '';
+
+          // Format the selected code
+          const formattedCode = formatUnisonCode(selectedText + '\n', {
+            tabSize: options.tabSize,
+            insertSpaces: options.insertSpaces,
+          });
+
+          // Remove the trailing newline we added for formatting
+          let result = formattedCode.replace(/\n$/, '');
+
+          // If the formatted code changed the base indentation, restore it
+          const formattedFirstLineIndent = result.match(/^(\s*)/)?.[1] || '';
+          if (formattedFirstLineIndent !== firstLineIndent && firstLineIndent.length > 0) {
+            // Adjust all lines to maintain relative indentation from the original base
+            const indentDiff = firstLineIndent.length - formattedFirstLineIndent.length;
+            if (indentDiff > 0) {
+              const padding = ' '.repeat(indentDiff);
+              result = result.split('\n').map(line => line.length > 0 ? padding + line : line).join('\n');
+            }
+          }
+
+          // If no changes, return empty array
+          if (selectedText === result) {
+            console.log('Range formatting: no changes needed');
+            return [];
+          }
+
+          console.log('Range formatting: applying changes to lines', startLine, '-', endLine);
+
+          // Return edit for the selected range (full lines)
+          return [{
+            range: {
+              startLineNumber: startLine,
+              startColumn: 1,
+              endLineNumber: endLine,
+              endColumn: model.getLineLength(endLine) + 1,
+            },
+            text: result,
+          }];
+        } catch (error) {
+          console.error('Range formatting error:', error);
+          return [];
+        }
+      },
+    });
+    console.log('Document formatting providers registered (full document + selection)');
+
     // Set up the definition click callback AFTER providers are registered
     console.log('[Editor] Setting definition click callback after provider registration');
     setOnDefinitionClick((fqn, type) => {
@@ -251,6 +364,11 @@ export function Editor({
 
     // Set the editor instance for definition provider (needed for cmd+click)
     setMonacoEditor(editor);
+
+    // Notify parent that editor is mounted (for Breadcrumbs, Outline, etc.)
+    if (onEditorMount) {
+      onEditorMount(editor);
+    }
 
     console.log('Editor mounted with UCM/LSP hybrid support');
 
@@ -458,6 +576,11 @@ export function Editor({
           },
           // Enable semantic highlighting
           'semanticHighlighting.enabled': true,
+          // Sticky scroll - keeps function/type headers visible when scrolling
+          stickyScroll: {
+            enabled: true,
+            maxLineCount: 5,
+          },
         }}
       />
     </div>
