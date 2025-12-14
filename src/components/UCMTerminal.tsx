@@ -2,8 +2,6 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { WebglAddon } from '@xterm/addon-webgl';
-import { CanvasAddon } from '@xterm/addon-canvas';
 import { getUCMLifecycleService } from '../services/ucmLifecycle';
 import '@xterm/xterm/css/xterm.css';
 
@@ -28,7 +26,7 @@ function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number):
  * only provides the UI for interacting with the already-running UCM process.
  *
  * Features:
- * - WebGL renderer with automatic canvas fallback on context loss
+ * - Uses default DOM renderer for stability during panel resizing
  * - Debounced resize to prevent rapid fit() calls
  * - Visibility change handling to refresh on tab switch
  * - Proper focus management
@@ -37,9 +35,6 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const webglAddonRef = useRef<WebglAddon | null>(null);
-  const canvasAddonRef = useRef<CanvasAddon | null>(null);
-  const rendererTypeRef = useRef<'webgl' | 'canvas'>('webgl');
   const unsubscribeOutputRef = useRef<(() => void) | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
@@ -48,57 +43,41 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
   // Track if we've ever expanded (to send initial clear only once)
   const hasExpandedOnceRef = useRef(false);
 
-  // Load renderer with WebGL fallback to canvas
-  const loadRenderer = useCallback((term: Terminal) => {
-    // Try WebGL first for better performance
-    if (rendererTypeRef.current === 'webgl') {
-      try {
-        const webglAddon = new WebglAddon();
-
-        // Handle WebGL context loss - fall back to canvas
-        webglAddon.onContextLoss(() => {
-          console.warn('WebGL context lost, falling back to canvas renderer');
-          webglAddon.dispose();
-          webglAddonRef.current = null;
-          rendererTypeRef.current = 'canvas';
-          loadRenderer(term);
-        });
-
-        term.loadAddon(webglAddon);
-        webglAddonRef.current = webglAddon;
-        console.log('UCM Terminal: Using WebGL renderer');
-        return;
-      } catch (e) {
-        console.warn('WebGL not available, using canvas renderer:', e);
-        rendererTypeRef.current = 'canvas';
-      }
-    }
-
-    // Fallback to canvas renderer
-    try {
-      const canvasAddon = new CanvasAddon();
-      term.loadAddon(canvasAddon);
-      canvasAddonRef.current = canvasAddon;
-      console.log('UCM Terminal: Using Canvas renderer');
-    } catch (e) {
-      console.warn('Canvas addon failed to load, using default renderer:', e);
-    }
+  // Check if container has valid dimensions for terminal rendering
+  const hasValidDimensions = useCallback(() => {
+    if (!terminalRef.current) return false;
+    const rect = terminalRef.current.getBoundingClientRect();
+    // Need at least 50px in each dimension for a meaningful terminal
+    return rect.width >= 50 && rect.height >= 50;
   }, []);
 
   // Debounced resize handler to prevent rapid fit() calls
   const debouncedFit = useMemo(
     () =>
       debounce(() => {
-        if (fitAddonRef.current && xtermRef.current && !isCollapsed) {
+        if (fitAddonRef.current && xtermRef.current && !isCollapsed && hasValidDimensions()) {
           try {
             fitAddonRef.current.fit();
           } catch (e) {
             console.warn('Failed to fit terminal:', e);
           }
         }
-      }, 100),
-    [isCollapsed]
+      }, 150),
+    [isCollapsed, hasValidDimensions]
   );
+
+  // Force a full terminal refresh (useful when display goes blank)
+  const forceRefresh = useCallback(() => {
+    if (!xtermRef.current || !fitAddonRef.current || isCollapsed) return;
+    if (!hasValidDimensions()) return;
+
+    try {
+      // Re-fit the terminal
+      fitAddonRef.current.fit();
+    } catch (e) {
+      console.warn('Failed to refresh terminal:', e);
+    }
+  }, [isCollapsed, hasValidDimensions]);
 
   // Track input buffer to intercept 'exit' command
   const inputBufferRef = useRef<string>('');
@@ -172,9 +151,6 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
 
     // Open terminal in container
     term.open(terminalRef.current);
-
-    // Load WebGL/Canvas renderer
-    loadRenderer(term);
 
     // Initial fit with delay for layout to settle
     setTimeout(() => {
@@ -275,9 +251,25 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
       ucmService.resize(rows, cols);
     });
 
-    // Set up debounced resize observer for container
-    const observer = new ResizeObserver(() => {
-      debouncedFit();
+    // Set up resize observer - only observe the terminal container itself
+    // Track last known good size to avoid unnecessary fits
+    let lastWidth = 0;
+    let lastHeight = 0;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        // Only trigger fit if size is valid and changed significantly (>10px)
+        if (width >= 50 && height >= 50) {
+          const widthDiff = Math.abs(width - lastWidth);
+          const heightDiff = Math.abs(height - lastHeight);
+          if (widthDiff > 10 || heightDiff > 10) {
+            lastWidth = width;
+            lastHeight = height;
+            debouncedFit();
+          }
+        }
+      }
     });
     observer.observe(terminalRef.current);
     resizeObserverRef.current = observer;
@@ -295,31 +287,20 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect();
       }
-      if (webglAddonRef.current) {
-        webglAddonRef.current.dispose();
-      }
-      if (canvasAddonRef.current) {
-        canvasAddonRef.current.dispose();
-      }
       term.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
-      webglAddonRef.current = null;
-      canvasAddonRef.current = null;
     };
-  }, [loadRenderer, debouncedFit]);
+  }, [debouncedFit]);
 
   // Handle visibility changes (browser tab switch, window minimize)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && xtermRef.current && !isCollapsed) {
-        // Refresh terminal display when becoming visible
+        // Refresh terminal display when becoming visible - use longer delay
         setTimeout(() => {
-          if (xtermRef.current) {
-            xtermRef.current.refresh(0, xtermRef.current.rows - 1);
-            fitAddonRef.current?.fit();
-          }
-        }, 50);
+          forceRefresh();
+        }, 200);
       }
     };
 
@@ -328,17 +309,15 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isCollapsed]);
+  }, [isCollapsed, forceRefresh]);
 
   // Handle collapse/expand with proper refresh
   useEffect(() => {
     if (!isCollapsed && fitAddonRef.current) {
-      // Delay fit to allow layout to settle
+      // Delay fit to allow layout to fully settle
       setTimeout(() => {
-        fitAddonRef.current?.fit();
-        // Refresh the terminal to ensure proper display
-        xtermRef.current?.refresh(0, xtermRef.current.rows - 1);
-      }, 100);
+        forceRefresh();
+      }, 250);
 
       // On first expand, send 'clear' command to UCM to display a fresh prompt
       // This handles the case where UCM started while panel was collapsed
@@ -355,7 +334,7 @@ export function UCMTerminal({ isCollapsed }: UCMTerminalProps) {
       }, 150);
     }
     wasCollapsedRef.current = isCollapsed;
-  }, [isCollapsed]);
+  }, [isCollapsed, forceRefresh]);
 
   // Focus terminal when clicked or focused
   const handleFocus = useCallback(() => {

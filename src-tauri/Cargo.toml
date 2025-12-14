@@ -24,6 +24,7 @@ log = "0.4"
 tauri = { version = "2.9.2", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1.36", features = ["full"] }
 tokio-tungstenite = "0.21"

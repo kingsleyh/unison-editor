@@ -809,5 +809,69 @@ export function registerUCMProviders(
     new UCMSignatureHelpProvider()
   );
 
+  // Register Code Action Provider (Quick Fixes)
+  monacoInstance.languages.registerCodeActionProvider(languageId, {
+    provideCodeActions(model, _range, context) {
+      const actions: monaco.languages.CodeAction[] = [];
+
+      // Quick Fix: Unused binding - prefix with underscore
+      for (const marker of context.markers) {
+        if (marker.message.toLowerCase().includes('unused')) {
+          // Extract the binding name from the message - try various formats
+          // Formats: "Unused binding \"errMsg\"", "unused: errMsg", "errMsg is unused", etc.
+          const nameMatch = marker.message.match(/['`"](\w+)['`"]/) ||
+                           marker.message.match(/binding\s+(\w+)/i) ||
+                           marker.message.match(/unused[:\s]+(\w+)/i) ||
+                           marker.message.match(/(\w+)\s+is\s+unused/i);
+
+          if (nameMatch) {
+            const bindingName = nameMatch[1];
+
+            // Find the binding name within the marker range
+            const markerText = model.getValueInRange({
+              startLineNumber: marker.startLineNumber,
+              startColumn: marker.startColumn,
+              endLineNumber: marker.endLineNumber,
+              endColumn: marker.endColumn,
+            });
+
+            // Find position of the binding name in the marker text
+            const nameIndex = markerText.lastIndexOf(bindingName);
+
+            if (nameIndex !== -1 && !bindingName.startsWith('_')) {
+              // Calculate the actual column positions for just the binding name
+              const startCol = marker.startColumn + nameIndex;
+              const endCol = startCol + bindingName.length;
+
+              actions.push({
+                title: `Prefix with underscore (_${bindingName})`,
+                kind: 'quickfix',
+                diagnostics: [marker],
+                isPreferred: true,
+                edit: {
+                  edits: [{
+                    resource: model.uri,
+                    textEdit: {
+                      range: {
+                        startLineNumber: marker.startLineNumber,
+                        startColumn: startCol,
+                        endLineNumber: marker.startLineNumber,
+                        endColumn: endCol,
+                      },
+                      text: `_${bindingName}`,
+                    },
+                    versionId: model.getVersionId(),
+                  }],
+                },
+              });
+            }
+          }
+        }
+      }
+
+      return { actions, dispose: () => {} };
+    },
+  });
+
   console.log('UCM providers registered for', languageId);
 }

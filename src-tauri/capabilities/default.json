@@ -18,6 +18,8 @@
     "core:window:allow-scale-factor",
     "core:window:allow-show",
     "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text"
   ]
 }
