@@ -125,6 +125,7 @@ interface UnisonState {
   // UI modals state
   commandPaletteOpen: boolean;
   shortcutsSettingsOpen: boolean;
+  themeSettingsOpen: boolean;
 
   // Actions
   setConnection: (host: string, port: number, lspPort: number) => void;
@@ -193,6 +194,7 @@ interface UnisonState {
   // UI modal actions
   setCommandPaletteOpen: (open: boolean) => void;
   setShortcutsSettingsOpen: (open: boolean) => void;
+  setThemeSettingsOpen: (open: boolean) => void;
 }
 
 export const useUnisonStore = create<UnisonState>((set, get) => ({
@@ -247,6 +249,7 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   // UI modals state
   commandPaletteOpen: false,
   shortcutsSettingsOpen: false,
+  themeSettingsOpen: false,
 
   // Actions
   setConnection: (host, port, lspPort) =>
@@ -464,4 +467,5 @@ export const useUnisonStore = create<UnisonState>((set, get) => ({
   // UI modal actions
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   setShortcutsSettingsOpen: (open) => set({ shortcutsSettingsOpen: open }),
+  setThemeSettingsOpen: (open) => set({ themeSettingsOpen: open }),
 }));

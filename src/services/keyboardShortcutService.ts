@@ -59,6 +59,14 @@ const DEFAULT_SHORTCUTS: DefaultShortcut[] = [
     defaultBindingMac: 'Cmd+K',
     defaultBindingWin: 'Ctrl+K',
   },
+  {
+    id: 'general.themeSettings',
+    label: 'Theme Settings',
+    description: 'Open theme and appearance settings',
+    category: 'general',
+    defaultBindingMac: 'Cmd+Shift+.',
+    defaultBindingWin: 'Ctrl+Shift+.',
+  },
 
   // Navigation - Panel Focus (opens panel if closed, focuses it)
   {

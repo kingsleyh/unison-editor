@@ -293,7 +293,7 @@ export function CollapsiblePanelStack({
     <div ref={containerRef} className="collapsible-panel-stack">
       {/* Workspace Panel - Fixed height */}
       {workspacePanel && (
-        <div className={`collapsible-panel fixed-height ${workspaceExpanded ? 'expanded' : 'collapsed'}`}>
+        <div className={`collapsible-panel fixed-height workspace-panel ${workspaceExpanded ? 'expanded' : 'collapsed'}`}>
           <div
             className="collapsible-panel-header"
             onClick={() => handlePanelHeaderClick('workspace')}
@@ -315,7 +315,7 @@ export function CollapsiblePanelStack({
         {/* File Explorer Panel */}
         {fileExplorerPanel && (
           <div
-            className={`collapsible-panel resizable ${fileExpanded ? 'expanded' : 'collapsed'}`}
+            className={`collapsible-panel resizable file-explorer-panel ${fileExpanded ? 'expanded' : 'collapsed'}`}
             style={{
               flex: fileExpanded ? `${fileGrow} 1 0` : `0 0 ${collapsedHeight}px`,
               minHeight: fileExpanded ? (fileExplorerPanel.minHeight ?? 80) : collapsedHeight,
@@ -347,7 +347,7 @@ export function CollapsiblePanelStack({
         {/* Outline Panel */}
         {outlinePanel && (
           <div
-            className={`collapsible-panel resizable ${outlineExpanded ? 'expanded' : 'collapsed'}`}
+            className={`collapsible-panel resizable outline-panel ${outlineExpanded ? 'expanded' : 'collapsed'}`}
             style={{
               flex: outlineExpanded ? `${outlineGrow} 1 0` : `0 0 ${collapsedHeight}px`,
               minHeight: outlineExpanded ? (outlinePanel.minHeight ?? 80) : collapsedHeight,
@@ -379,7 +379,7 @@ export function CollapsiblePanelStack({
         {/* UCM Explorer Panel */}
         {ucmExplorerPanel && (
           <div
-            className={`collapsible-panel resizable ${ucmExpanded ? 'expanded' : 'collapsed'}`}
+            className={`collapsible-panel resizable ucm-explorer-panel ${ucmExpanded ? 'expanded' : 'collapsed'}`}
             style={{
               flex: ucmExpanded ? `${ucmGrow} 1 0` : `0 0 ${collapsedHeight}px`,
               minHeight: ucmExpanded ? (ucmExplorerPanel.minHeight ?? 80) : collapsedHeight,

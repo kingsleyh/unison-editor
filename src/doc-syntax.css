@@ -1,87 +1,56 @@
 /* Unison Doc and Syntax Styling - from ui-core */
+/* Colors are applied dynamically via themeService */
 
-/* CSS Variables for colors */
+/* CSS Variables for fallback/layout only */
 :root {
-  --font-monospace: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  --font-sans-serif: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   --border-radius-base: 4px;
   --font-size-small: 0.875rem;
   --font-size-medium: 1rem;
-
-  /* Unison dark theme colors */
-  --color-gray-0: #1a1a1a;
-  --color-gray-1: #222222;
-  --color-gray-2: #2a2a2a;
-  --color-gray-3: #3a3a3a;
-  --color-gray-4: #4a4a4a;
-  --color-gray-5: #6a6a6a;
-  --color-gray-6: #8a8a8a;
-  --color-gray-8: #aaaaaa;
-  --color-gray-9: #cacaca;
-  --color-gray-10: #d4d4d4;
-  --color-gray-11: #e0e0e0;
-
-  --color-blue-1: #1e3a5f;
-  --color-blue-2: #264f73;
-  --color-blue-3: #4a9eff;
-  --color-blue-4: #2e5c8a;
-  --color-blue-5: #5eb0ff;
-
-  --color-purple-1: #3a2a5f;
-  --color-purple-2: #4a3a7a;
-  --color-purple-3: #6a5a9a;
-  --color-purple-4: #8a7aba;
-  --color-purple-5: #aa9ada;
-
-  --color-pink-1: #ff6b9d;
-  --color-pink-2: #ff5588;
-  --color-pink-3: #ff4477;
-  --color-pink-4: #ff3366;
-
-  --color-green-3: #7cc89a;
-
   --color-transparent: transparent;
 
-  /* UI color tokens */
-  --u-color_text: var(--color-gray-11);
-  --u-color_text_very-subdued: var(--color-gray-4);
-  --u-color_text_subdued: var(--color-gray-5);
-  --u-color_container: var(--color-gray-1);
-  --u-color_container_subdued: var(--color-gray-0);
-  --u-color_container_subdued_selected: var(--color-gray-1);
-  --u-color_container_selected: var(--color-gray-2);
-  --u-color_element_subdued: var(--color-gray-1);
-  --u-color_element_emphasized: var(--color-gray-2);
-  --u-color_element_emphasized_selected: var(--color-blue-1);
-  --u-color_border_subdued: var(--color-gray-2);
-  --u-color_divider: var(--color-gray-3);
-  --u-color_info_container_subdued: var(--color-blue-1);
-  --u-color_scrollbar: var(--color-gray-3);
-  --u-color_scrollbar-track: var(--color-transparent);
-  --u-color_action: var(--color-gray-3);
-  --u-color_positive_action: #4caf50;
-  --u-color_positive_icon-on-action: var(--color-gray-11);
+  /* UI color tokens - map to theme variables with fallbacks */
+  --u-color_text: var(--color-editor-foreground, #e0e0e0);
+  --u-color_text_very-subdued: var(--color-editor-line-numbers, #4a4a4a);
+  --u-color_text_subdued: var(--color-editor-line-numbers, #6a6a6a);
+  --u-color_container: var(--color-panel-background, #222222);
+  --u-color_container_subdued: var(--color-editor-background, #1a1a1a);
+  --u-color_container_subdued_selected: var(--color-panel-background, #222222);
+  --u-color_container_selected: var(--color-editor-line-highlight, #2a2a2a);
+  --u-color_element_subdued: var(--color-panel-background, #222222);
+  --u-color_element_emphasized: var(--color-editor-line-highlight, #2a2a2a);
+  --u-color_element_emphasized_selected: var(--color-selection-background, #1e3a5f);
+  --u-color_border_subdued: var(--color-border-subtle, #2a2a2a);
+  --u-color_divider: var(--color-divider, #3a3a3a);
+  --u-color_info_container_subdued: var(--color-selection-background, #1e3a5f);
+  --u-color_scrollbar: var(--color-scrollbar-thumb, #3a3a3a);
+  --u-color_scrollbar-track: var(--color-scrollbar-track, transparent);
+  --u-color_action: var(--color-badge-background, #3a3a3a);
+  --u-color_positive_action: var(--color-status-success, #4caf50);
+  --u-color_positive_icon-on-action: var(--color-status-success-foreground, #e0e0e0);
 
-  /* Syntax colors */
-  --color-syntax-plain: var(--u-color_text);
-  --color-syntax-base: var(--u-color_text);
-  --color-syntax-subtle: var(--color-gray-4);
-  --color-syntax-keyword: var(--color-pink-2);
-  --color-syntax-operator: var(--color-gray-5);
-  --color-syntax-term: var(--color-purple-5);
-  --color-syntax-term-namespace: var(--color-purple-4);
-  --color-syntax-ability: var(--color-pink-1);
-  --color-syntax-type: var(--color-blue-3);
-  --color-syntax-type-namespace: var(--color-blue-2);
-  --color-syntax-constructor: var(--color-blue-3);
-  --color-syntax-constructor-namespace: var(--color-blue-2);
-  --color-syntax-text: var(--color-green-3);
-  --color-syntax-link-hover-bg: var(--color-gray-0);
-  --color-syntax-link-hover-fg: var(--color-gray-11);
-  --color-syntax-monochrome-subtle: var(--u-color_text_subdued);
-  --color-syntax-monochrome-base: var(--u-color_text);
-  --color-syntax-monochrome-em: var(--u-color_text);
-  --color-tooltip-source-bg: var(--color-gray-2);
+  /* Syntax colors - mapped from theme variables to ui-core naming conventions */
+  /* These aliases bridge the gap between themeService (--color-syntax-type-reference)
+     and ui-core expected names (--color-syntax-type) */
+  --color-syntax-type: var(--color-syntax-type-reference, #4EC9B0);
+  --color-syntax-term: var(--color-syntax-term-reference, #9CDCFE);
+  --color-syntax-keyword: var(--color-syntax-keyword, #C586C0);
+  --color-syntax-operator: var(--color-syntax-operator, #D4D4D4);
+  --color-syntax-ability: var(--color-syntax-delay-force, #D7BA7D);
+  --color-syntax-text: var(--color-syntax-string, #CE9178);
+  --color-syntax-constructor: var(--color-syntax-constructor, #4EC9B0);
+  --color-syntax-type-namespace: var(--color-syntax-type-namespace, #3D8A7A);
+  --color-syntax-term-namespace: var(--color-syntax-term-namespace, #7AADBE);
+
+  /* Additional syntax colors for doc rendering */
+  --color-syntax-plain: var(--color-editor-foreground, #e0e0e0);
+  --color-syntax-base: var(--color-editor-foreground, #e0e0e0);
+  --color-syntax-subtle: var(--color-syntax-comment, #6A9955);
+  --color-syntax-link-hover-bg: var(--color-list-hover-background, #1a1a1a);
+  --color-syntax-link-hover-fg: var(--color-editor-foreground, #e0e0e0);
+  --color-syntax-monochrome-subtle: var(--color-editor-line-numbers, #6a6a6a);
+  --color-syntax-monochrome-base: var(--color-editor-foreground, #e0e0e0);
+  --color-syntax-monochrome-em: var(--color-editor-foreground, #e0e0e0);
+  --color-tooltip-source-bg: var(--color-tooltip-background, #2a2a2a);
 }
 
 /* Definition Doc Styles */
@@ -341,8 +310,9 @@ pre {
 
 code {
   display: inline-block;
-  font-family: var(--font-monospace);
-  line-height: 1.6;
+  font-family: var(--font-editor-family, var(--font-mono-family, 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace));
+  font-size: var(--font-editor-size, 14px);
+  line-height: var(--font-editor-line-height, 1.6);
 }
 
 .inline-code code {

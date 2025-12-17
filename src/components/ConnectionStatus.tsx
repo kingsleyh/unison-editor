@@ -13,9 +13,9 @@ interface StatusDotProps {
 
 function StatusDot({ label, state, onClick }: StatusDotProps) {
   const colors = {
-    connected: '#4ec9b0',    // teal (matches project status indicator)
-    connecting: '#ff9800',   // orange
-    disconnected: '#f44336', // red
+    connected: 'var(--color-status-success)',
+    connecting: 'var(--color-status-warning)',
+    disconnected: 'var(--color-status-error)',
   };
 
   const titles = {
@@ -45,7 +45,7 @@ function StatusDot({ label, state, onClick }: StatusDotProps) {
           display: 'inline-block',
         }}
       />
-      <span style={{ fontSize: '11px', color: '#999' }}>{label}</span>
+      <span style={{ fontSize: '11px', color: 'var(--color-app-foreground-muted)' }}>{label}</span>
     </div>
   );
 }

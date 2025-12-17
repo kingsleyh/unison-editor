@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { themeService } from '../theme/themeService';
 import '@xterm/xterm/css/xterm.css';
 
 interface GeneralTerminalProps {
@@ -34,34 +35,16 @@ export const GeneralTerminal = forwardRef<GeneralTerminalHandle, GeneralTerminal
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return;
 
+    // Get initial theme from themeService
+    const activeTheme = themeService.getActiveTheme();
+
     // Create terminal instance
     const term = new Terminal({
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#d4d4d4',
-        cursorAccent: '#1e1e1e',
-        selectionBackground: '#264f78',
-        black: '#000000',
-        red: '#cd3131',
-        green: '#0dbc79',
-        yellow: '#e5e510',
-        blue: '#2472c8',
-        magenta: '#bc3fbc',
-        cyan: '#11a8cd',
-        white: '#e5e5e5',
-        brightBlack: '#666666',
-        brightRed: '#f14c4c',
-        brightGreen: '#23d18b',
-        brightYellow: '#f5f543',
-        brightBlue: '#3b8eea',
-        brightMagenta: '#d670d6',
-        brightCyan: '#29b8db',
-        brightWhite: '#ffffff',
-      },
-      fontFamily: '"JetBrains Mono", "Fira Code", Consolas, monospace',
-      fontSize: 13,
-      lineHeight: 1.2,
+      theme: themeService.getTerminalTheme() as ITheme,
+      fontFamily: activeTheme.fonts.terminalFontFamily,
+      fontSize: activeTheme.fonts.terminalFontSize,
+      lineHeight: activeTheme.fonts.terminalLineHeight,
+      fontWeight: String(activeTheme.fonts.terminalFontWeight) as 'normal' | 'bold' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900',
       cursorBlink: true,
       cursorStyle: 'block',
       scrollback: 10000,
@@ -112,6 +95,28 @@ export const GeneralTerminal = forwardRef<GeneralTerminalHandle, GeneralTerminal
     };
   }, []);
 
+  // Subscribe to theme changes
+  useEffect(() => {
+    const unsubscribe = themeService.onThemeChange((event) => {
+      const term = xtermRef.current;
+      if (term) {
+        const newTheme = event.newTheme;
+        term.options.theme = themeService.generateTerminalThemeData(newTheme) as ITheme;
+        term.options.fontFamily = newTheme.fonts.terminalFontFamily;
+        term.options.fontSize = newTheme.fonts.terminalFontSize;
+        term.options.lineHeight = newTheme.fonts.terminalLineHeight;
+        // Trigger a re-render
+        term.refresh(0, term.rows - 1);
+        // Refit to account for potential font size changes
+        fitAddonRef.current?.fit();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   // Handle collapse/expand
   useEffect(() => {
     if (!isCollapsed && fitAddonRef.current) {
@@ -135,7 +140,7 @@ export const GeneralTerminal = forwardRef<GeneralTerminalHandle, GeneralTerminal
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        backgroundColor: '#1e1e1e',
+        backgroundColor: 'var(--color-panel-background)',
       }}
     >
       <div

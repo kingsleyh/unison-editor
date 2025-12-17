@@ -8,7 +8,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--color-overlay-background, rgba(0, 0, 0, 0.6));
   display: flex;
   justify-content: center;
   align-items: center;
@@ -16,8 +16,8 @@
 }
 
 .shortcuts-settings-modal {
-  background: #1e1e1e;
-  border: 1px solid #454545;
+  background: var(--color-modal-background, #252526);
+  border: 1px solid var(--color-modal-border, #454545);
   border-radius: 8px;
   width: 700px;
   max-width: 90vw;
@@ -32,38 +32,38 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #3e3e42;
+  border-bottom: 1px solid var(--color-border-subtle, #3e3e42);
 }
 
 .shortcuts-settings-header h2 {
   margin: 0;
   font-size: 18px;
   font-weight: 500;
-  color: #cccccc;
+  color: var(--color-modal-foreground, #cccccc);
 }
 
 .shortcuts-settings-search {
   padding: 12px 20px;
-  border-bottom: 1px solid #3e3e42;
+  border-bottom: 1px solid var(--color-border-subtle, #3e3e42);
 }
 
 .shortcuts-settings-search input {
   width: 100%;
   padding: 8px 12px;
-  background: #2d2d2d;
-  border: 1px solid #3e3e42;
+  background: var(--color-input-background, #2d2d2d);
+  border: 1px solid var(--color-input-border, #3e3e42);
   border-radius: 4px;
-  color: #cccccc;
+  color: var(--color-input-foreground, #cccccc);
   font-size: 13px;
 }
 
 .shortcuts-settings-search input:focus {
   outline: none;
-  border-color: #0e639c;
+  border-color: var(--color-input-focus-border, #0e639c);
 }
 
 .shortcuts-settings-search input::placeholder {
-  color: #6e6e6e;
+  color: var(--color-input-placeholder, #6e6e6e);
 }
 
 .shortcuts-settings-content {
@@ -83,12 +83,12 @@
 .shortcuts-category-title {
   font-size: 12px;
   font-weight: 600;
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0 0 12px 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid #3e3e42;
+  border-bottom: 1px solid var(--color-border-subtle, #3e3e42);
 }
 
 .shortcuts-list {
@@ -103,16 +103,16 @@
   justify-content: space-between;
   padding: 10px 12px;
   border-radius: 4px;
-  background: #252526;
+  background: var(--color-input-background, #3c3c3c);
   transition: background 0.1s ease;
 }
 
 .shortcut-row:hover {
-  background: #2a2d2e;
+  background: var(--color-list-hover-background, #2a2d2e);
 }
 
 .shortcut-row.customized {
-  background: #1a3a4a;
+  background: var(--color-status-info, #1a3a4a);
 }
 
 .shortcut-info {
@@ -125,12 +125,12 @@
 
 .shortcut-label {
   font-size: 13px;
-  color: #cccccc;
+  color: var(--color-modal-foreground, #cccccc);
 }
 
 .shortcut-description {
   font-size: 11px;
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
 }
 
 .shortcut-binding {
@@ -142,11 +142,11 @@
 
 .shortcut-key-btn {
   padding: 4px 10px;
-  background: #3e3e42;
-  border: 1px solid #555555;
+  background: var(--color-badge-background, #3e3e42);
+  border: 1px solid var(--color-border, #555555);
   border-radius: 4px;
-  color: #cccccc;
-  font-family: monospace;
+  color: var(--color-modal-foreground, #cccccc);
+  font-family: var(--font-mono-family, monospace);
   font-size: 12px;
   cursor: pointer;
   min-width: 80px;
@@ -155,29 +155,29 @@
 }
 
 .shortcut-key-btn:hover {
-  background: #4e4e52;
-  border-color: #666666;
+  background: var(--color-button-secondary-hover-background, #4e4e52);
+  border-color: var(--color-border, #666666);
 }
 
 .shortcut-key-btn.disabled {
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   font-style: italic;
 }
 
 .shortcut-reset-btn {
   padding: 4px 8px;
   background: transparent;
-  border: 1px solid #555555;
+  border: 1px solid var(--color-border, #555555);
   border-radius: 4px;
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   font-size: 11px;
   cursor: pointer;
   transition: all 0.1s ease;
 }
 
 .shortcut-reset-btn:hover {
-  background: #3e3e42;
-  color: #cccccc;
+  background: var(--color-badge-background, #3e3e42);
+  color: var(--color-modal-foreground, #cccccc);
 }
 
 .shortcut-capture {
@@ -188,10 +188,10 @@
 
 .shortcut-capture-text {
   padding: 4px 10px;
-  background: #0e639c;
-  border: 1px solid #1177bb;
+  background: var(--color-button-background, #0e639c);
+  border: 1px solid var(--color-button-hover-background, #1177bb);
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--color-button-foreground, #ffffff);
   font-size: 12px;
   animation: pulse 1s infinite;
 }
@@ -209,33 +209,33 @@
 .shortcut-disable-btn {
   padding: 4px 8px;
   background: transparent;
-  border: 1px solid #555555;
+  border: 1px solid var(--color-border, #555555);
   border-radius: 4px;
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   font-size: 11px;
   cursor: pointer;
 }
 
 .shortcut-disable-btn:hover {
-  background: #5a1d1d;
-  border-color: #a52a2a;
-  color: #ff8888;
+  background: var(--color-status-error, #5a1d1d);
+  border-color: var(--color-status-error, #a52a2a);
+  color: var(--color-status-error-foreground, #ff8888);
 }
 
 .shortcut-conflict {
   width: 100%;
   margin-top: 4px;
   padding: 6px 12px;
-  background: #5a1d1d;
+  background: var(--color-status-error, #5a1d1d);
   border-radius: 4px;
-  color: #ff8888;
+  color: var(--color-status-error-foreground, #ff8888);
   font-size: 11px;
 }
 
 .shortcuts-empty {
   padding: 32px;
   text-align: center;
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   font-size: 14px;
 }
 
@@ -244,38 +244,38 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-top: 1px solid #3e3e42;
+  border-top: 1px solid var(--color-border-subtle, #3e3e42);
   gap: 12px;
 }
 
 .shortcuts-settings-footer .btn-secondary {
   padding: 8px 16px;
   background: transparent;
-  border: 1px solid #555555;
+  border: 1px solid var(--color-border, #555555);
   border-radius: 4px;
-  color: #cccccc;
+  color: var(--color-modal-foreground, #cccccc);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.1s ease;
 }
 
 .shortcuts-settings-footer .btn-secondary:hover {
-  background: #3e3e42;
+  background: var(--color-badge-background, #3e3e42);
 }
 
 .shortcuts-settings-footer .btn-primary {
   padding: 8px 20px;
-  background: #0e639c;
+  background: var(--color-button-background, #0e639c);
   border: none;
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--color-button-foreground, #ffffff);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.1s ease;
 }
 
 .shortcuts-settings-footer .btn-primary:hover {
-  background: #1177bb;
+  background: var(--color-button-hover-background, #1177bb);
 }
 
 /* Scrollbar styling */
@@ -284,14 +284,14 @@
 }
 
 .shortcuts-settings-content::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--color-scrollbar-track, transparent);
 }
 
 .shortcuts-settings-content::-webkit-scrollbar-thumb {
-  background: #454545;
+  background: var(--color-scrollbar-thumb, #454545);
   border-radius: 4px;
 }
 
 .shortcuts-settings-content::-webkit-scrollbar-thumb:hover {
-  background: #555555;
+  background: var(--color-scrollbar-thumb-hover, #555555);
 }

@@ -9,7 +9,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--color-overlay-background, rgba(0, 0, 0, 0.5));
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -18,8 +18,8 @@
 }
 
 .command-palette {
-  background: #252526;
-  border: 1px solid #454545;
+  background: var(--color-modal-background, #252526);
+  border: 1px solid var(--color-modal-border, #454545);
   border-radius: 6px;
   width: 600px;
   max-width: 90vw;
@@ -34,12 +34,12 @@
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #3e3e42;
-  background: #2d2d2d;
+  border-bottom: 1px solid var(--color-border-subtle, #3e3e42);
+  background: var(--color-input-background, #2d2d2d);
 }
 
 .command-palette-icon {
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   font-family: monospace;
   font-size: 16px;
   margin-right: 12px;
@@ -51,13 +51,13 @@
   background: transparent;
   border: none;
   outline: none;
-  color: #cccccc;
+  color: var(--color-input-foreground, #cccccc);
   font-size: 14px;
   font-family: inherit;
 }
 
 .command-palette-input::placeholder {
-  color: #6e6e6e;
+  color: var(--color-input-placeholder, #6e6e6e);
 }
 
 .command-palette-list {
@@ -68,7 +68,7 @@
 
 .command-palette-empty {
   padding: 16px;
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   text-align: center;
   font-size: 13px;
 }
@@ -84,7 +84,7 @@
 
 .command-palette-item:hover,
 .command-palette-item.selected {
-  background: #04395e;
+  background: var(--color-list-active-background, #04395e);
 }
 
 .command-palette-item-content {
@@ -96,7 +96,7 @@
 }
 
 .command-palette-item-label {
-  color: #cccccc;
+  color: var(--color-modal-foreground, #cccccc);
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
@@ -104,21 +104,21 @@
 }
 
 .command-palette-item-category {
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   font-size: 12px;
   white-space: nowrap;
   padding: 2px 6px;
-  background: #3e3e42;
+  background: var(--color-badge-background, #3e3e42);
   border-radius: 3px;
 }
 
 .command-palette-item-keybinding {
-  color: #858585;
+  color: var(--color-app-foreground-muted, #858585);
   font-size: 12px;
-  font-family: monospace;
+  font-family: var(--font-mono-family, monospace);
   white-space: nowrap;
   padding: 2px 6px;
-  background: #3e3e42;
+  background: var(--color-badge-background, #3e3e42);
   border-radius: 3px;
   margin-left: 12px;
 }
@@ -129,14 +129,14 @@
 }
 
 .command-palette-list::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--color-scrollbar-track, transparent);
 }
 
 .command-palette-list::-webkit-scrollbar-thumb {
-  background: #454545;
+  background: var(--color-scrollbar-thumb, #454545);
   border-radius: 4px;
 }
 
 .command-palette-list::-webkit-scrollbar-thumb:hover {
-  background: #555555;
+  background: var(--color-scrollbar-thumb-hover, #555555);
 }

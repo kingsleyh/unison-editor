@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor';
-import { generateMonacoTheme, unisonDarkTheme, type ThemeColors } from '../theme/unisonTheme';
+import { themeService } from '../theme/themeService';
+import type { Theme } from '../types/theme';
 
 export const unisonLanguageConfig: Monaco.languages.LanguageConfiguration = {
   comments: {
@@ -227,7 +228,10 @@ export const unisonTokenProvider: Monaco.languages.IMonarchLanguage = {
   },
 };
 
-export function registerUnisonLanguage(monaco: typeof Monaco, theme: ThemeColors = unisonDarkTheme) {
+// Theme name used for Monaco editor
+export const UNISON_THEME_NAME = 'unison-theme';
+
+export function registerUnisonLanguage(monaco: typeof Monaco) {
   console.log('Registering Unison language...');
 
   // Register the language
@@ -239,9 +243,24 @@ export function registerUnisonLanguage(monaco: typeof Monaco, theme: ThemeColors
   // Register the token provider
   monaco.languages.setMonarchTokensProvider('unison', unisonTokenProvider);
 
-  // Define custom theme using unified theme system
-  const monacoTheme = generateMonacoTheme(theme);
-  monaco.editor.defineTheme('unison-dark', monacoTheme);
+  // Define initial theme using themeService
+  const monacoTheme = themeService.getMonacoTheme();
+  monaco.editor.defineTheme(UNISON_THEME_NAME, monacoTheme);
 
   console.log('Unison language registered successfully');
+}
+
+/**
+ * Update the Monaco theme when the theme changes
+ * Call this when themeService emits a theme change event
+ * @param monaco - Monaco instance
+ * @param theme - Optional theme to use (if not provided, uses active theme from service)
+ */
+export function updateMonacoTheme(monaco: typeof Monaco, theme?: Theme) {
+  const monacoTheme = theme
+    ? themeService.generateMonacoThemeData(theme)
+    : themeService.getMonacoTheme();
+  monaco.editor.defineTheme(UNISON_THEME_NAME, monacoTheme);
+  // Force theme refresh by re-applying it to all editors
+  monaco.editor.setTheme(UNISON_THEME_NAME);
 }

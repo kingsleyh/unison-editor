@@ -15,7 +15,7 @@ export function UCMNotFoundModal({
     <div className="ucm-conflict-overlay">
       <div className="ucm-conflict-modal">
         <div className="ucm-conflict-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f04040" strokeWidth="2">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-error)" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <line x1="15" y1="9" x2="9" y2="15" />
             <line x1="9" y1="9" x2="15" y2="15" />
@@ -32,12 +32,12 @@ export function UCMNotFoundModal({
             href="https://www.unison-lang.org/docs/installation/"
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: '#569cd6', textDecoration: 'underline' }}
+            style={{ color: 'var(--color-link-foreground)', textDecoration: 'underline' }}
           >
             unison-lang.org
           </a>{' '}
           and ensure it's in your PATH (typically installed via Homebrew: <code style={{
-            background: '#2d2d2d',
+            background: 'var(--color-tab-background)',
             padding: '2px 6px',
             borderRadius: '4px',
             fontSize: '12px'

@@ -22,12 +22,13 @@ import { AlertModal } from './components/AlertModal';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { CommandPalette } from './components/CommandPalette';
 import { KeyboardShortcutsSettings } from './components/KeyboardShortcutsSettings';
+import { ThemeSettings } from './components/ThemeSettings';
 import { useKeyboardShortcutListener } from './hooks/useKeyboardShortcuts';
 import type * as Monaco from 'monaco-editor';
 import { useUnisonStore } from './store/unisonStore';
 import type { EditorTab } from './store/unisonStore';
 import { getUCMApiClient } from './services/ucmApi';
-import { applyThemeVariables, loadTheme } from './theme/unisonTheme';
+import { themeService } from './theme/themeService';
 import { getLoggingService } from './services/loggingService';
 import { buildSingleWatchCode, buildSingleTestCode, buildAllWatchesCode, buildAllTestsCode, getTestName, detectTestExpressions, detectWatchExpressions } from './services/watchExpressionService';
 import { getWorkspaceConfigService, type WorkspaceEditorState, type PersistedTab, type WindowState } from './services/workspaceConfigService';
@@ -70,6 +71,8 @@ function App() {
     setCommandPaletteOpen,
     shortcutsSettingsOpen,
     setShortcutsSettingsOpen,
+    themeSettingsOpen,
+    setThemeSettingsOpen,
   } = useUnisonStore();
 
   // Initialize keyboard shortcut listener
@@ -153,9 +156,11 @@ function App() {
   const generalTerminalRef = useRef<GeneralTerminalHandle>(null);
 
   // Initialize theme system on mount
+  // The themeService singleton already loads and applies the saved theme on construction
   useEffect(() => {
-    const theme = loadTheme();
-    applyThemeVariables(theme);
+    // Ensure themeService is initialized (it applies theme on construction)
+    // Access the active theme to trigger initialization if not already done
+    themeService.getActiveTheme();
   }, []);
 
   // Connect logging service to store
@@ -1447,6 +1452,7 @@ function App() {
     shortcutService.setAction('general.commandPalette', () => setCommandPaletteOpen(true));
     shortcutService.setAction('general.save', saveCurrentFile);
     shortcutService.setAction('general.settings', () => setShortcutsSettingsOpen(true));
+    shortcutService.setAction('general.themeSettings', () => setThemeSettingsOpen(true));
 
     // Navigation - Focus editor
     shortcutService.setAction('nav.focusEditor', () => {
@@ -2015,6 +2021,10 @@ function App() {
         isOpen={shortcutsSettingsOpen}
         onClose={() => setShortcutsSettingsOpen(false)}
       />
+
+      {themeSettingsOpen && (
+        <ThemeSettings onClose={() => setThemeSettingsOpen(false)} />
+      )}
     </div>
   );
 }

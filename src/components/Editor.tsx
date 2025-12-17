@@ -1,7 +1,8 @@
 import { Editor as MonacoEditor } from '@monaco-editor/react';
 import { useRef, useEffect } from 'react';
 import type * as Monaco from 'monaco-editor';
-import { registerUnisonLanguage } from '../editor/unisonLanguage';
+import { registerUnisonLanguage, UNISON_THEME_NAME, updateMonacoTheme } from '../editor/unisonLanguage';
+import { themeService } from '../theme/themeService';
 import { getMonacoLspClient, type PublishDiagnosticsParams, type LspDiagnostic } from '../services/monacoLspClient';
 import { registerUCMProviders, setOnDefinitionClick, setMonacoEditor, triggerDefinitionClick } from '../services/monacoUcmProviders';
 import { registerDocumentSymbolProvider } from '../services/monacoSymbolProvider';
@@ -225,6 +226,32 @@ export function Editor({
       unsubscribe();
     };
   }, [lspClient]);
+
+  // Subscribe to theme changes
+  useEffect(() => {
+    const unsubscribe = themeService.onThemeChange((event) => {
+      const monaco = monacoRef.current;
+      const editor = editorRef.current;
+      if (monaco) {
+        // Pass the new theme from the event so preview themes work correctly
+        updateMonacoTheme(monaco, event.newTheme);
+      }
+      // Update editor font settings
+      if (editor && event.newTheme) {
+        editor.updateOptions({
+          fontFamily: event.newTheme.fonts.editorFontFamily,
+          fontSize: event.newTheme.fonts.editorFontSize,
+          lineHeight: event.newTheme.fonts.editorLineHeight,
+          fontWeight: String(event.newTheme.fonts.editorFontWeight),
+          letterSpacing: event.newTheme.fonts.editorLetterSpacing,
+        });
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Store onDefinitionClick in a ref so we can use it in handleEditorWillMount
   const onDefinitionClickRef = useRef(onDefinitionClick);
@@ -533,7 +560,7 @@ export function Editor({
       <MonacoEditor
         height="100%"
         language={language}
-        theme="vs-dark"
+        theme={UNISON_THEME_NAME}
         value={value}
         onChange={onChange}
         beforeMount={handleEditorWillMount}
@@ -541,7 +568,11 @@ export function Editor({
         options={{
           readOnly,
           minimap: { enabled: true },
-          fontSize: 14,
+          fontFamily: themeService.getActiveTheme().fonts.editorFontFamily,
+          fontSize: themeService.getActiveTheme().fonts.editorFontSize,
+          lineHeight: themeService.getActiveTheme().fonts.editorLineHeight,
+          fontWeight: String(themeService.getActiveTheme().fonts.editorFontWeight),
+          letterSpacing: themeService.getActiveTheme().fonts.editorLetterSpacing,
           lineNumbers: 'on',
           renderWhitespace: 'selection',
           scrollBeyondLastLine: false,

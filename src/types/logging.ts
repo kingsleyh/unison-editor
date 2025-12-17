@@ -81,10 +81,10 @@ export const DEFAULT_LOG_FILTER: LogFilter = {
  * Log level colors for UI
  */
 export const LOG_LEVEL_COLORS: Record<LogLevel, string> = {
-  debug: '#888888',
-  info: '#3b82f6',
-  warn: '#f59e0b',
-  error: '#ef4444',
+  debug: 'var(--color-app-foreground-muted)',
+  info: 'var(--color-status-info)',
+  warn: 'var(--color-status-warning)',
+  error: 'var(--color-status-error)',
 };
 
 /**

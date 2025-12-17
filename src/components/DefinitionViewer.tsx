@@ -3,6 +3,8 @@ import { Editor as MonacoEditor } from '@monaco-editor/react';
 import { useUnisonStore } from '../store/unisonStore';
 import { getUCMApiClient } from '../services/ucmApi';
 import type { DefinitionSummary } from '../types/syntax';
+import { UNISON_THEME_NAME } from '../editor/unisonLanguage';
+import { themeService } from '../theme/themeService';
 
 interface DefinitionViewerProps {
   selectedDefinition: { name: string; type: 'term' | 'type' } | null;
@@ -133,11 +135,15 @@ export function DefinitionViewer({
         <MonacoEditor
           language="unison"
           value={definition.source}
-          theme="unison-dark"
+          theme={UNISON_THEME_NAME}
           options={{
             readOnly: true,
             minimap: { enabled: false },
-            fontSize: 14,
+            fontFamily: themeService.getActiveTheme().fonts.editorFontFamily,
+            fontSize: themeService.getActiveTheme().fonts.editorFontSize,
+            lineHeight: themeService.getActiveTheme().fonts.editorLineHeight,
+            fontWeight: String(themeService.getActiveTheme().fonts.editorFontWeight),
+            letterSpacing: themeService.getActiveTheme().fonts.editorLetterSpacing,
             lineNumbers: 'on',
             renderWhitespace: 'selection',
             scrollBeyondLastLine: false,
